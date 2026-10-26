@@ -1,7 +1,7 @@
 <?php
 
 // แก้ไขค่าเริ่มต้นให้ตรงกับฐานข้อมูล หรือกำหนดผ่าน environment variables
-$dbHost = getenv('DB_HOST') ?: 'localhost';
+$dbHost = getenv('DB_HOST') ?: 'ns31.hostinglotus.net';
 $dbPort = getenv('DB_PORT') ?: '3306';
 $dbName = getenv('DB_NAME') ?: 'roietkps_db';
 $dbUser = getenv('DB_USER') ?: 'roietkps_user';
@@ -26,3 +26,5 @@ try {
     error_log('Database connection failed (PDO code: ' . $exception->getCode() . ')');
     throw new RuntimeException('ไม่สามารถเชื่อมต่อฐานข้อมูลได้ กรุณาติดต่อผู้ดูแลระบบ', 0, $exception);
 }
+
+return $pdo;
