@@ -16,7 +16,7 @@ $initialStatus = in_array($requestedStatus, $definition['statuses'], true) ? $re
   <div class="results-summary"><span id="resultCount" role="status" aria-live="polite">ทั้งหมด <?= count($definition['rows']) ?> รายการ</span><button class="btn reset-filter" type="button" id="resetFilters" hidden>ล้างตัวกรอง</button></div>
   <div class="records-wrap">
     <table class="table records-table mb-0" id="recordsTable">
-      <caption class="visually-hidden"><?= e($pageTitle) ?> ข้อมูลสมมติ</caption>
+      <caption class="visually-hidden"><?= e($pageTitle) ?></caption>
       <thead><tr>
         <th scope="col"><?= $page === 'registry' ? 'ชื่อสหกรณ์ / รหัส' : 'สหกรณ์ / เลขที่' . ($page === 'loans' ? 'คำขอ' : 'สัญญา') ?></th>
         <?php if ($page === 'registry'): ?><th scope="col">อำเภอ</th><th scope="col">ประเภท</th>
@@ -54,7 +54,7 @@ $initialStatus = in_array($requestedStatus, $definition['statuses'], true) ? $re
         <?php endforeach; ?>
       </tbody>
     </table>
-    <div class="empty-state" id="emptyState" hidden><?= app_icon('search') ?><h2>ไม่พบรายการที่ค้นหา</h2><p>ลองเปลี่ยนคำค้นหาหรือเลือกสถานะอื่น</p><button class="btn btn-outline-primary" type="button" data-reset-filters>ล้างตัวกรอง</button></div>
+    <div class="empty-state" id="emptyState" hidden><?= app_icon('search') ?><h2><?= $definition['rows'] ? 'ไม่พบรายการที่ค้นหา' : 'ยังไม่มีข้อมูล' ?></h2><p><?= $definition['rows'] ? 'กรุณาเปลี่ยนคำค้นหาหรือเลือกสถานะอื่น' : 'ข้อมูลที่บันทึกในระบบจะแสดงในหน้านี้' ?></p><button class="btn btn-outline-primary" type="button" data-reset-filters<?= $definition['rows'] ? '' : ' hidden' ?>>ล้างตัวกรอง</button></div>
   </div>
 </section>
-<?php if ($page === 'debt'): ?><p class="data-footnote"><?= app_icon('info') ?> ตัวอย่างแสดงเฉพาะเงินต้น ยังไม่รวมการคำนวณดอกเบี้ยและค่าปรับ</p><?php endif; ?>
+<?php if ($page === 'debt'): ?><p class="data-footnote"><?= app_icon('info') ?> ยอดคงเหลือแสดงเฉพาะเงินต้น ยังไม่รวมดอกเบี้ยและค่าปรับ</p><?php endif; ?>

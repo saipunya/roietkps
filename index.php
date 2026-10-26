@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/includes/ui.php';
 require_once __DIR__ . '/includes/accounts.php';
-require __DIR__ . '/includes/demo-data.php';
+require __DIR__ . '/includes/data.php';
 
 $pages = [
     'dashboard' => ['title' => 'ภาพรวมกองทุน', 'description' => 'ข้อมูลสำคัญและรายการที่คุณควรติดตาม', 'icon' => 'dashboard'],
@@ -51,7 +51,6 @@ require __DIR__ . '/nav.php';
       <span class="topbar-title">สำนักงานสหกรณ์จังหวัดร้อยเอ็ด</span>
     </div>
     <div class="topbar-actions">
-      <span class="preview-badge"><span class="status-dot"></span>ตัวอย่างหน้าจอ</span>
       <?php if ($currentUser): ?>
         <span class="signed-in-name"><?= e($currentUser['full_name']) ?></span>
         <form action="logout.php" method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><button class="btn btn-outline-primary login-link" type="submit">ออกจากระบบ</button></form>
@@ -71,10 +70,9 @@ require __DIR__ . '/nav.php';
       <a class="btn btn-primary" href="index.php?page=loans"><?= app_icon('document') ?> ดูทะเบียนเงินกู้</a>
       <?php elseif (in_array($page, ['registry', 'loans', 'debt'], true)): ?>
       <button class="btn btn-outline-primary" type="button" data-export-table="recordsTable"
-        data-export-name="<?= e($page) ?>-demo.csv"><?= app_icon('download') ?> ส่งออก CSV</button>
+        data-export-name="<?= e($page) ?>.csv"><?= app_icon('download') ?> ส่งออก CSV</button>
       <?php endif; ?>
     </div>
-    <?php if ($page !== 'users'): ?><div class="demo-notice"><?= app_icon('info') ?><span>ข้อมูลกองทุนในหน้านี้เป็นข้อมูลสมมติสำหรับทดลองหน้าจอ</span></div><?php endif; ?>
     <?php
     if ($isDashboard) {
         require __DIR__ . '/views/dashboard.php';

@@ -70,8 +70,6 @@ button, input, select { font: inherit; }
 .eyebrow { margin: 0 0 7px; color: var(--muted); font-size: 14px; }
 h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5; margin: 0 0 4px; }
 .page-description { margin: 0; font-size: 16px; color: var(--muted); }
-.demo-notice { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 24px; color: #586c5e; font-size: 14px; }
-.demo-notice .app-icon { width: 16px; height: 16px; margin-top: 2px; }
 .section-label { display: flex; justify-content: space-between; gap: 12px; color: #56695c; font-size: 15px; margin-bottom: 12px; }
 .snapshot-date { font-size: 13px; color: var(--muted); }
 .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
@@ -316,8 +314,6 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
   .page-heading > .btn { margin: 0; min-height: 44px; font-size: 15px; }
   .eyebrow { font-size: 13px; }
   h1 { font-size: 28px; }
-  .demo-notice { font-size: 13px; margin-bottom: 22px; }
-  .demo-notice-detail { display: block; margin-top: 2px; }
   .section-label { font-size: 14px; align-items: baseline; }
   .snapshot-date { font-size: 11px; }
   .stats-grid { gap: 10px; margin-bottom: 20px; }

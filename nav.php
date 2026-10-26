@@ -14,5 +14,5 @@
     <?php if (!$currentUser): ?><a class="sidebar-link mt-3" href="register.php"><?= app_icon('user') ?><span>สมัครสมาชิก</span></a><?php endif; ?>
     <div class="sidebar-note"><span class="sidebar-note-icon"><?= app_icon('leaf') ?></span><p>ข้อมูลเป็นระบบ<br><strong>ติดตามงานได้ง่ายขึ้น</strong></p></div>
   </div>
-  <div class="sidebar-footer"><?= app_icon('pin') ?><span>จังหวัดร้อยเอ็ด</span><small>ต้นแบบ v0.1</small></div>
+  <div class="sidebar-footer"><?= app_icon('pin') ?><span>จังหวัดร้อยเอ็ด</span><small>ระบบสารสนเทศ กพส.</small></div>
 </aside>

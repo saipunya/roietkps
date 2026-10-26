@@ -7,11 +7,11 @@ $waitingDocuments = count(array_filter($loans, function ($loan) { return $loan['
 $stats = [
     ['label' => 'สหกรณ์ในทะเบียน', 'value' => count($cooperatives), 'unit' => 'แห่ง', 'note' => 'ข้อมูลในพื้นที่รับผิดชอบ', 'icon' => 'building', 'tone' => 'green'],
     ['label' => 'วงเงินอนุมัติ', 'value' => number_format(array_sum(array_column($approved, 'amount')) / 1000000, 2), 'unit' => 'ล้านบาท', 'note' => count($approved) . ' คำขอที่อนุมัติแล้ว', 'icon' => 'check', 'tone' => 'green'],
-    ['label' => 'รับชำระเงินต้นแล้ว', 'value' => number_format(array_sum(array_column($debts, 'paid')) / 1000000, 2), 'unit' => 'ล้านบาท', 'note' => 'ยอดรวมจากรายการตัวอย่าง', 'icon' => 'wallet', 'tone' => 'blue'],
+    ['label' => 'รับชำระเงินต้นแล้ว', 'value' => number_format(array_sum(array_column($debts, 'paid')) / 1000000, 2), 'unit' => 'ล้านบาท', 'note' => 'ยอดรับชำระเงินต้นทั้งหมด', 'icon' => 'wallet', 'tone' => 'blue'],
     ['label' => 'บัญชีที่ต้องติดตาม', 'value' => $overdue + $dueSoon, 'unit' => 'บัญชี', 'note' => 'ค้างชำระ ' . $overdue . ' · ใกล้ครบกำหนด ' . $dueSoon, 'icon' => 'clock', 'tone' => 'amber'],
 ];
 ?>
-<div class="section-label"><span>สรุปข้อมูล</span><span class="snapshot-date">ข้อมูลตัวอย่าง ณ 26 ตุลาคม 2569</span></div>
+<div class="section-label"><span>สรุปข้อมูล</span><span class="snapshot-date">ข้อมูลปัจจุบัน</span></div>
 <section class="stats-grid" aria-label="สรุปข้อมูลกองทุน">
   <?php foreach ($stats as $stat): ?>
     <article class="stat-card">
@@ -40,12 +40,15 @@ $stats = [
 </div>
 
 <section class="surface recent-section">
-  <div class="surface-heading"><div><h2>คำขอเงินกู้ล่าสุด</h2><p>รายการล่าสุดจากข้อมูลตัวอย่าง</p></div><a class="text-link" href="index.php?page=loans">ดูทั้งหมด <?= app_icon('arrow') ?></a></div>
+  <div class="surface-heading"><div><h2>คำขอเงินกู้ล่าสุด</h2><p>รายการคำขอที่บันทึกล่าสุด</p></div><a class="text-link" href="index.php?page=loans">ดูทั้งหมด <?= app_icon('arrow') ?></a></div>
   <div class="records-wrap">
     <table class="table records-table mb-0">
-      <caption class="visually-hidden">คำขอเงินกู้ล่าสุด 4 รายการ ข้อมูลสมมติ</caption>
+      <caption class="visually-hidden">คำขอเงินกู้ล่าสุด</caption>
       <thead><tr><th scope="col">สหกรณ์ / เลขที่คำขอ</th><th scope="col" class="amount-cell">วงเงินที่ขอ (บาท)</th><th scope="col">สถานะ</th><th scope="col"><span class="visually-hidden">รายละเอียด</span></th></tr></thead>
       <tbody>
+        <?php if (!$loans): ?>
+          <tr><td colspan="4" class="text-center text-secondary py-4">ยังไม่มีคำขอเงินกู้</td></tr>
+        <?php endif; ?>
         <?php foreach (array_slice($loans, 0, 4) as $loan): ?>
           <tr>
             <td class="record-primary"><strong><?= e($cooperatives[$loan['coop']]['name']) ?></strong><small><?= e($loan['id']) ?></small></td>

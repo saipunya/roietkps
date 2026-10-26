@@ -1,7 +1,7 @@
 <?php
 
 // แก้ไขค่าเริ่มต้นให้ตรงกับฐานข้อมูล หรือกำหนดผ่าน environment variables
-$dbHost = getenv('DB_HOST') ?: 'ns31.hostinglotus.net';
+$dbHost = getenv('DB_HOST') ?: 'localhost';
 $dbPort = getenv('DB_PORT') ?: '3306';
 $dbName = getenv('DB_NAME') ?: 'roietkps_db';
 $dbUser = getenv('DB_USER') ?: 'roietkps_user';
