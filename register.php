@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     register_account($db, $values, $password);
                     $_SESSION['registration_complete'] = true;
                     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-                    header('Location: login.php', true, 303);
+                    header('Location: index.php?login=1', true, 303);
                     exit;
                 }
             } catch (DomainException $exception) {
@@ -69,12 +69,31 @@ foreach ($values as $key => $value) {
 }
 require __DIR__ . '/header.php';
 ?>
-<div class="auth-page">
-  <header class="auth-topbar"><a class="back-link" href="login.php"><?= app_icon('arrow') ?> กลับหน้าเข้าสู่ระบบ</a><span class="preview-badge">สมัครสมาชิกใหม่</span></header>
-  <main class="auth-main" id="main-content" tabindex="-1">
-    <section class="auth-card registration-card" aria-labelledby="registerTitle">
-      <a class="auth-brand" href="index.php"><span class="brand-mark"><?= app_icon('building') ?></span><strong>RoietKPS</strong></a>
-      <div class="auth-heading"><h1 id="registerTitle">สมัครสมาชิก</h1><p>ส่งข้อมูลให้ Admin ตรวจสอบและกำหนดสิทธิ์</p></div>
+<div class="auth-page registration-page">
+  <main class="registration-screen" id="main-content" tabindex="-1">
+    <aside class="registration-intro" aria-label="ขั้นตอนการสมัครสมาชิก">
+      <a class="registration-brand" href="index.php"><span class="brand-mark"><?= app_icon('building') ?></span><span><strong>RoietKPS</strong><small>ระบบสารสนเทศกองทุนพัฒนาสหกรณ์</small></span></a>
+      <div class="registration-intro-copy">
+        <p class="registration-eyebrow">การลงทะเบียนผู้ใช้งาน</p>
+        <h2>เริ่มต้นใช้งานระบบ<br>ได้อย่างมั่นใจ</h2>
+        <p>สร้างบัญชีเพื่อเข้าถึงข้อมูลและบริการตามขอบเขตหน้าที่ของคุณ</p>
+        <div class="registration-steps">
+          <div class="registration-step"><span><?= app_icon('check') ?></span><div><strong>กรอกข้อมูลให้ครบถ้วน</strong><small>ใช้ข้อมูลจริงเพื่อให้ตรวจสอบได้รวดเร็ว</small></div></div>
+          <div class="registration-step"><span><?= app_icon('users') ?></span><div><strong>Admin ตรวจสอบสิทธิ์</strong><small>กำหนดบทบาทและพื้นที่รับผิดชอบ</small></div></div>
+          <div class="registration-step"><span><?= app_icon('login') ?></span><div><strong>เข้าสู่ระบบหลังอนุมัติ</strong><small>เริ่มใช้งานด้วยบัญชีของคุณ</small></div></div>
+        </div>
+      </div>
+      <p class="registration-agency">สำนักงานสหกรณ์จังหวัดร้อยเอ็ด</p>
+    </aside>
+
+    <section class="registration-form-side">
+      <nav class="registration-actions" aria-label="ทางลัดหน้าสมัครสมาชิก">
+        <a class="back-link" href="index.php"><?= app_icon('arrow') ?> กลับหน้าหลัก</a>
+        <a class="btn btn-outline-primary registration-login-link" href="login.php"><?= app_icon('login') ?> เข้าสู่ระบบ</a>
+      </nav>
+      <div class="registration-form-wrap">
+      <section class="auth-card registration-card" aria-labelledby="registerTitle">
+      <div class="auth-heading"><p class="registration-form-kicker">สร้างบัญชีใหม่</p><h1 id="registerTitle">สมัครสมาชิก</h1><p>ส่งข้อมูลให้ Admin ตรวจสอบและกำหนดสิทธิ์</p></div>
       <div class="auth-preview-note"><?= app_icon('info') ?><span>หลังสมัคร บัญชีจะอยู่ในสถานะรออนุมัติ และยังเข้าสู่ระบบไม่ได้จนกว่า Admin จะอนุมัติ</span></div>
       <?php if ($formError !== ''): ?><div class="alert alert-danger auth-feedback" role="alert"><?= e($formError) ?></div><?php endif; ?>
       <form class="auth-form" action="register.php" method="post">
@@ -93,7 +112,12 @@ require __DIR__ . '/header.php';
         <p class="field-help" id="passwordHint">ใช้รหัสผ่านอย่างน้อย 8 ตัวอักษร ชื่อผู้ใช้ใช้ภาษาอังกฤษหรือตัวเลข 4–50 ตัว</p>
         <button class="btn btn-primary auth-submit" type="submit">ส่งคำขอสมัครสมาชิก <?= app_icon('arrow') ?></button>
       </form>
-      <div class="auth-help"><a class="btn auth-help-toggle" href="login.php">มีบัญชีแล้ว? เข้าสู่ระบบ</a></div>
+      </section>
+      </div>
     </section>
   </main>
-  <?php require __DIR__ . '/footer.php'; ?>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
+<script src="assets/js/app.js?v=3"></script>
+</body>
+</html>

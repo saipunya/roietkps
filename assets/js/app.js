@@ -50,8 +50,19 @@
     });
   }
 
-  const invalidLoginField = document.querySelector('.auth-form [aria-invalid="true"]');
+  const invalidLoginField = document.querySelector('.auth-page .auth-form [aria-invalid="true"]');
   if (invalidLoginField) invalidLoginField.focus();
+
+  const loginModal = document.getElementById('loginModal');
+  if (loginModal && typeof bootstrap !== 'undefined') {
+    loginModal.addEventListener('shown.bs.modal', function () {
+      const target = loginModal.querySelector('[aria-invalid="true"], #modalLoginUsername');
+      if (target) target.focus();
+    });
+    if (loginModal.dataset.autoOpen === 'true') {
+      bootstrap.Modal.getOrCreateInstance(loginModal).show();
+    }
+  }
 
   const table = document.getElementById('recordsTable');
   const search = document.getElementById('recordSearch');

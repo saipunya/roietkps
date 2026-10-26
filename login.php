@@ -11,6 +11,14 @@ $errors = [];
 $formError = '';
 $notice = isset($_SESSION['registration_complete']) ? 'สมัครสมาชิกสำเร็จ บัญชีของคุณกำลังรอ Admin อนุมัติ' : '';
 unset($_SESSION['registration_complete']);
+$isModalRequest = $_SERVER['REQUEST_METHOD'] === 'POST'
+    && isset($_POST['login_context'])
+    && $_POST['login_context'] === 'modal';
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    header('Location: index.php?login=1', true, 303);
+    exit;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $token = isset($_POST['csrf_token']) && is_string($_POST['csrf_token']) ? $_POST['csrf_token'] : '';
@@ -61,6 +69,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $username = '';
     }
     unset($password);
+
+    if ($isModalRequest) {
+        $_SESSION['login_modal_feedback'] = [
+            'username' => $username,
+            'errors' => $errors,
+            'form_error' => $formError,
+        ];
+        header('Location: index.php?login=1', true, 303);
+        exit;
+    }
 }
 
 require __DIR__ . '/header.php';

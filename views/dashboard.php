@@ -1,13 +1,13 @@
 <?php
-$approved = array_filter($loans, function ($loan) { return $loan['status'] === 'อนุมัติ'; });
-$pending = count($loans) - count($approved);
-$overdue = count(array_filter($debts, function ($debt) { return $debt['status'] === 'ค้างชำระ'; }));
-$dueSoon = count(array_filter($debts, function ($debt) { return $debt['status'] === 'ใกล้ครบกำหนด'; }));
-$waitingDocuments = count(array_filter($loans, function ($loan) { return $loan['status'] === 'รอเอกสาร'; }));
+$summary = $dashboardData['summary'];
+$pending = array_sum($dashboardData['request_status']['values']) - $summary['approved_requests'];
+$overdue = $summary['overdue'];
+$dueSoon = $summary['due_soon'];
+$waitingDocuments = $summary['waiting_documents'];
 $stats = [
-    ['label' => 'สหกรณ์ในทะเบียน', 'value' => count($cooperatives), 'unit' => 'แห่ง', 'note' => 'ข้อมูลในพื้นที่รับผิดชอบ', 'icon' => 'building', 'tone' => 'green'],
-    ['label' => 'วงเงินอนุมัติ', 'value' => number_format(array_sum(array_column($approved, 'amount')) / 1000000, 2), 'unit' => 'ล้านบาท', 'note' => count($approved) . ' คำขอที่อนุมัติแล้ว', 'icon' => 'check', 'tone' => 'green'],
-    ['label' => 'รับชำระเงินต้นแล้ว', 'value' => number_format(array_sum(array_column($debts, 'paid')) / 1000000, 2), 'unit' => 'ล้านบาท', 'note' => 'ยอดรับชำระเงินต้นทั้งหมด', 'icon' => 'wallet', 'tone' => 'blue'],
+    ['label' => 'สหกรณ์ในทะเบียน', 'value' => $summary['cooperatives'], 'unit' => 'แห่ง', 'note' => 'ข้อมูลในพื้นที่รับผิดชอบ', 'icon' => 'building', 'tone' => 'green'],
+    ['label' => 'วงเงินอนุมัติ', 'value' => number_format($summary['approved_amount'], 2), 'unit' => 'ล้านบาท', 'note' => $summary['approved_requests'] . ' คำขอที่อนุมัติแล้ว', 'icon' => 'check', 'tone' => 'green'],
+    ['label' => 'รับชำระเงินต้นแล้ว', 'value' => number_format($summary['principal_paid'], 2), 'unit' => 'ล้านบาท', 'note' => 'ยอดรับชำระเงินต้นทั้งหมด', 'icon' => 'wallet', 'tone' => 'blue'],
     ['label' => 'บัญชีที่ต้องติดตาม', 'value' => $overdue + $dueSoon, 'unit' => 'บัญชี', 'note' => 'ค้างชำระ ' . $overdue . ' · ใกล้ครบกำหนด ' . $dueSoon, 'icon' => 'clock', 'tone' => 'amber'],
 ];
 ?>
@@ -21,6 +21,18 @@ $stats = [
     </article>
   <?php endforeach; ?>
 </section>
+
+<section class="chart-grid" aria-label="กราฟสรุปข้อมูลกองทุน">
+  <article class="surface chart-card chart-card-wide">
+    <div class="surface-heading"><div><h2>แนวโน้มการอนุมัติและรับชำระ</h2><p>เปรียบเทียบยอดรายเดือน หน่วยล้านบาท</p></div><span class="chart-heading-icon tone-green"><?= app_icon('chart') ?></span></div>
+    <div class="chart-container chart-container-trend"><canvas id="fundFlowChart" role="img" aria-label="กราฟแนวโน้มวงเงินอนุมัติและยอดรับชำระ 6 เดือน"></canvas></div>
+  </article>
+  <article class="surface chart-card">
+    <div class="surface-heading"><div><h2>สถานะคำขอเงินกู้</h2><p>สัดส่วนคำขอทั้งหมด</p></div><span class="chart-heading-icon tone-blue"><?= app_icon('document') ?></span></div>
+    <div class="chart-container chart-container-status"><canvas id="requestStatusChart" role="img" aria-label="กราฟสัดส่วนสถานะคำขอเงินกู้"></canvas></div>
+  </article>
+</section>
+<script type="application/json" id="dashboardChartData"><?= json_encode($dashboardData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
 
 <div class="dashboard-grid">
   <section class="surface">

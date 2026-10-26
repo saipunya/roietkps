@@ -15,6 +15,14 @@ $requestedPage = isset($_GET['page']) && is_string($_GET['page']) ? $_GET['page'
 $page = array_key_exists($requestedPage, $pages) ? $requestedPage : 'dashboard';
 $pageTitle = $pages[$page]['title'];
 $isDashboard = $page === 'dashboard';
+$loginModalFeedback = isset($_SESSION['login_modal_feedback']) && is_array($_SESSION['login_modal_feedback'])
+    ? $_SESSION['login_modal_feedback']
+    : [];
+unset($_SESSION['login_modal_feedback']);
+$loginNotice = isset($_SESSION['registration_complete'])
+    ? 'สมัครสมาชิกสำเร็จ บัญชีของคุณกำลังรอ Admin อนุมัติ'
+    : '';
+unset($_SESSION['registration_complete']);
 
 try {
     $currentUser = current_account();
@@ -39,6 +47,7 @@ try {
 if ($currentUser) {
     header('Cache-Control: no-store');
 }
+$openLoginModal = !$currentUser && (isset($_GET['login']) || $loginModalFeedback || $loginNotice !== '');
 
 require __DIR__ . '/header.php';
 require __DIR__ . '/nav.php';
@@ -52,17 +61,18 @@ require __DIR__ . '/nav.php';
     </div>
     <div class="topbar-actions">
       <?php if ($currentUser): ?>
-        <span class="signed-in-name"><?= e($currentUser['full_name']) ?></span>
-        <form action="logout.php" method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><button class="btn btn-outline-primary login-link" type="submit">ออกจากระบบ</button></form>
+      <span class="signed-in-name"><?= e($currentUser['full_name']) ?></span>
+      <form action="logout.php" method="post"><input type="hidden" name="csrf_token"
+          value="<?= e(csrf_token()) ?>"><button class="btn btn-outline-primary login-link"
+          type="submit">ออกจากระบบ</button></form>
       <?php else: ?>
-        <a class="btn btn-primary login-link" href="login.php"><?= app_icon('login') ?><span>เข้าสู่ระบบ</span></a>
+      <a class="btn btn-primary login-link" href="login.php" data-bs-toggle="modal" data-bs-target="#loginModal"><?= app_icon('login') ?><span>เข้าสู่ระบบ</span></a>
       <?php endif; ?>
     </div>
   </header>
   <main id="main-content" class="main-content" tabindex="-1">
     <div class="page-heading">
       <div>
-        <p class="eyebrow">กองทุนพัฒนาสหกรณ์ · กพส.</p>
         <h1><?= e($pageTitle) ?></h1>
         <p class="page-description"><?= e($pages[$page]['description']) ?></p>
       </div>
