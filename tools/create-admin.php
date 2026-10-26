@@ -23,7 +23,7 @@ try {
         }
         shell_exec('stty -echo');
     }
-    fwrite(STDERR, "Password (at least 15 characters): ");
+    fwrite(STDERR, "Password (at least 8 characters): ");
     $password = rtrim((string) fgets(STDIN), "\r\n");
     if ($terminal) {
         fwrite(STDERR, "\nConfirm password: ");

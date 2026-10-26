@@ -37,8 +37,8 @@ function post_password(string $key = 'password'): string
 
 function password_error(string $password): string
 {
-    if (!mb_check_encoding($password, 'UTF-8') || mb_strlen($password, 'UTF-8') < 15) {
-        return 'กรุณาใช้รหัสผ่านอย่างน้อย 15 ตัวอักษร';
+    if (!mb_check_encoding($password, 'UTF-8') || mb_strlen($password, 'UTF-8') < 8) {
+        return 'กรุณาใช้รหัสผ่านอย่างน้อย 8 ตัวอักษร';
     }
     // PHP 7.4 PASSWORD_DEFAULT uses bcrypt: reject, rather than truncate, long input.
     return strlen($password) > 72 || strpos($password, "\0") !== false ? 'รหัสผ่านยาวเกินกำหนดหรือมีอักขระที่ไม่รองรับ' : '';

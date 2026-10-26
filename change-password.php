@@ -63,6 +63,6 @@ require __DIR__ . '/header.php';
 <?php if ($formError): ?><div class="alert alert-danger" role="alert"><?= e($formError) ?></div><?php endif; ?>
 <form class="auth-form" action="change-password.php" method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
 <?php foreach (['current_password' => 'รหัสผ่านปัจจุบัน', 'new_password' => 'รหัสผ่านใหม่', 'password_confirmation' => 'ยืนยันรหัสผ่านใหม่'] as $key => $label): ?><div class="auth-field"><label class="form-label" for="<?= e($key) ?>"><?= e($label) ?></label><input class="form-control" type="password" id="<?= e($key) ?>" name="<?= e($key) ?>" maxlength="72" autocomplete="<?= $key === 'current_password' ? 'current-password' : 'new-password' ?>" required></div><?php endforeach; ?>
-<p class="field-help">รหัสผ่านใหม่ต้องมีอย่างน้อย 15 ตัวอักษร</p><button class="btn btn-primary auth-submit" type="submit">บันทึกรหัสผ่าน</button></form>
+<p class="field-help">รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร</p><button class="btn btn-primary auth-submit" type="submit">บันทึกรหัสผ่าน</button></form>
 <form class="auth-help" action="logout.php" method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><button class="btn auth-help-toggle" type="submit">ออกจากระบบ</button></form>
 </section></main><?php require __DIR__ . '/footer.php'; ?>
