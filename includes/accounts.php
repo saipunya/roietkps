@@ -272,3 +272,122 @@ function review_registration(PDO $db, int $actorId, int $userId, string $decisio
         throw $exception;
     }
 }
+
+function update_managed_account(PDO $db, int $actorId, int $userId, array $values): void
+{
+    $username = trim((string) ($values['username'] ?? ''));
+    $fullName = trim((string) ($values['full_name'] ?? ''));
+    $email = trim((string) ($values['email'] ?? ''));
+    $roleCode = (string) ($values['role_code'] ?? '');
+    $provinceId = !empty($values['province_id']) ? (int) $values['province_id'] : null;
+    $cooperativeId = !empty($values['cooperative_id']) ? (int) $values['cooperative_id'] : null;
+    if (!preg_match('/\A[A-Za-z0-9][A-Za-z0-9._-]{3,49}\z/', $username)) {
+        throw new DomainException('ชื่อผู้ใช้งานต้องเป็นภาษาอังกฤษ ตัวเลข . _ หรือ - จำนวน 4–50 ตัว');
+    }
+    if (!mb_check_encoding($fullName, 'UTF-8') || mb_strlen($fullName, 'UTF-8') < 2 || mb_strlen($fullName, 'UTF-8') > 150) {
+        throw new DomainException('กรุณากรอกชื่อ–นามสกุล 2–150 ตัวอักษร');
+    }
+    if ($email !== '' && (strlen($email) > 254 || !filter_var($email, FILTER_VALIDATE_EMAIL))) {
+        throw new DomainException('กรุณากรอกอีเมลให้ถูกต้อง');
+    }
+    if (!array_key_exists($roleCode, assignable_roles())) {
+        throw new DomainException('บทบาทที่เลือกไม่ได้รับอนุญาต');
+    }
+
+    $db->beginTransaction();
+    try {
+        $admin = $db->prepare("SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id JOIN role_permissions rp ON rp.role_id = r.id JOIN permissions p ON p.id = rp.permission_id WHERE u.id = ? AND u.status = 'active' AND u.must_change_password = 0 AND r.is_active = 1 AND r.code = 'system_admin' AND p.code = 'users.manage' FOR UPDATE");
+        $admin->execute([$actorId]);
+        if (!$admin->fetchColumn() || $actorId === $userId) {
+            throw new DomainException('ไม่สามารถแก้ไขบัญชีนี้ได้');
+        }
+        $target = $db->prepare('SELECT u.id, u.username, u.full_name, u.email, u.status, u.role_id, u.data_scope, u.province_id, u.cooperative_id, r.code AS role_code FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? FOR UPDATE');
+        $target->execute([$userId]);
+        $account = $target->fetch();
+        if (!$account || $account['status'] === 'pending' || $account['role_code'] === 'system_admin' || $account['role_code'] === 'applicant') {
+            throw new DomainException('บัญชีนี้ไม่สามารถแก้ไขจากเมนูนี้ได้');
+        }
+        $roleQuery = $db->prepare('SELECT id, data_scope FROM roles WHERE code = ? AND is_active = 1');
+        $roleQuery->execute([$roleCode]);
+        $role = $roleQuery->fetch();
+        $expectedScopes = ['central_officer' => 'all', 'provincial_officer' => 'province', 'promotion_officer' => 'province', 'cooperative_user' => 'cooperative'];
+        if (!$role || $role['data_scope'] !== $expectedScopes[$roleCode]) {
+            throw new DomainException('ขอบเขตของบทบาทไม่ถูกต้อง');
+        }
+        if ($role['data_scope'] === 'all') {
+            $provinceId = null;
+            $cooperativeId = null;
+        } elseif ($role['data_scope'] === 'province') {
+            if (!$provinceId) {
+                throw new DomainException('กรุณาเลือกจังหวัดที่รับผิดชอบ');
+            }
+            $province = $db->prepare('SELECT id FROM provinces WHERE id = ?');
+            $province->execute([$provinceId]);
+            if (!$province->fetchColumn()) {
+                throw new DomainException('ไม่พบจังหวัดที่เลือก');
+            }
+            $cooperativeId = null;
+        } else {
+            if (!$cooperativeId) {
+                throw new DomainException('กรุณาเลือกสหกรณ์หรือกลุ่มเกษตรกร');
+            }
+            $cooperative = $db->prepare("SELECT id, province_id FROM cooperatives WHERE id = ? AND status = 'active'");
+            $cooperative->execute([$cooperativeId]);
+            $organization = $cooperative->fetch();
+            if (!$organization) {
+                throw new DomainException('ไม่พบหน่วยงานที่เลือกหรือหน่วยงานถูกระงับ');
+            }
+            $provinceId = (int) $organization['province_id'];
+        }
+        $update = $db->prepare('UPDATE users SET username = ?, full_name = ?, email = ?, role_id = ?, data_scope = ?, province_id = ?, cooperative_id = ?, failed_login_attempts = 0, locked_until = NULL, auth_version = auth_version + 1 WHERE id = ?');
+        $update->execute([$username, $fullName, $email === '' ? null : $email, $role['id'], $role['data_scope'], $provinceId, $cooperativeId, $userId]);
+        $oldValues = ['username' => $account['username'], 'full_name' => $account['full_name'], 'email' => $account['email'], 'role' => $account['role_code'], 'province_id' => $account['province_id'], 'cooperative_id' => $account['cooperative_id']];
+        $newValues = ['username' => $username, 'full_name' => $fullName, 'email' => $email === '' ? null : $email, 'role' => $roleCode, 'province_id' => $provinceId, 'cooperative_id' => $cooperativeId];
+        $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, new_values, ip_hash) VALUES (?, 'account.update', 'user', ?, ?, ?, ?)");
+        $audit->execute([$actorId, $userId, json_encode($oldValues, JSON_UNESCAPED_UNICODE), json_encode($newValues, JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
+        notification_create($db, $userId, 'account', 'ข้อมูลบัญชีได้รับการแก้ไข', 'ผู้ดูแลระบบปรับปรุงข้อมูลหรือสิทธิ์ของบัญชี กรุณาเข้าสู่ระบบใหม่', 'normal', 'index.php?page=dashboard', 'account:update:' . $userId . ':' . time(), 'user', $userId);
+        $db->commit();
+    } catch (Throwable $exception) {
+        $db->rollBack();
+        if ($exception instanceof PDOException && isset($exception->errorInfo[1]) && (int) $exception->errorInfo[1] === 1062) {
+            throw new DomainException('ชื่อผู้ใช้งานนี้ถูกใช้แล้ว กรุณาเลือกชื่ออื่น');
+        }
+        throw $exception;
+    }
+}
+
+function set_managed_account_status(PDO $db, int $actorId, int $userId, string $newStatus, string $reason): void
+{
+    if (!in_array($newStatus, ['active', 'suspended'], true)) {
+        throw new DomainException('สถานะบัญชีไม่ถูกต้อง');
+    }
+    if (mb_strlen($reason, 'UTF-8') < 3 || mb_strlen($reason, 'UTF-8') > 500) {
+        throw new DomainException('กรุณาระบุเหตุผล 3–500 ตัวอักษร');
+    }
+    $db->beginTransaction();
+    try {
+        $admin = $db->prepare("SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id JOIN role_permissions rp ON rp.role_id = r.id JOIN permissions p ON p.id = rp.permission_id WHERE u.id = ? AND u.status = 'active' AND u.must_change_password = 0 AND r.is_active = 1 AND r.code = 'system_admin' AND p.code = 'users.manage' FOR UPDATE");
+        $admin->execute([$actorId]);
+        if (!$admin->fetchColumn() || $actorId === $userId) {
+            throw new DomainException('ไม่สามารถเปลี่ยนสถานะบัญชีนี้ได้');
+        }
+        $target = $db->prepare('SELECT u.status, r.code AS role_code FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? FOR UPDATE');
+        $target->execute([$userId]);
+        $account = $target->fetch();
+        if (!$account || $account['role_code'] === 'system_admin' || $account['role_code'] === 'applicant' || $account['status'] === 'pending') {
+            throw new DomainException('บัญชีนี้ไม่สามารถเปลี่ยนสถานะจากเมนูนี้ได้');
+        }
+        if ($account['status'] === $newStatus) {
+            throw new DomainException($newStatus === 'active' ? 'บัญชีนี้เปิดใช้งานอยู่แล้ว' : 'บัญชีนี้ถูกระงับอยู่แล้ว');
+        }
+        $update = $db->prepare('UPDATE users SET status = ?, failed_login_attempts = 0, locked_until = NULL, auth_version = auth_version + 1 WHERE id = ?');
+        $update->execute([$newStatus, $userId]);
+        $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, new_values, ip_hash) VALUES (?, ?, 'user', ?, ?, ?, ?)");
+        $audit->execute([$actorId, $newStatus === 'suspended' ? 'account.suspend' : 'account.activate', $userId, json_encode(['status' => $account['status']], JSON_UNESCAPED_UNICODE), json_encode(['status' => $newStatus, 'reason' => $reason], JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
+        notification_create($db, $userId, 'account', $newStatus === 'suspended' ? 'บัญชีถูกระงับการใช้งาน' : 'บัญชีกลับมาใช้งานได้แล้ว', $reason, $newStatus === 'suspended' ? 'urgent' : 'normal', 'index.php?page=dashboard', 'account:status:' . $userId . ':' . $newStatus . ':' . time(), 'user', $userId);
+        $db->commit();
+    } catch (Throwable $exception) {
+        $db->rollBack();
+        throw $exception;
+    }
+}

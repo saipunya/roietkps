@@ -289,6 +289,12 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
 .account-meta { display: block; font-size: 12px; color: var(--muted); white-space: normal; overflow-wrap: anywhere; }
 .review-note { max-width: 220px; }
 .user-pagination { display: flex; justify-content: space-between; gap: 16px; padding: 20px 24px; }
+.record-actions-group { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.record-button-danger { color: #a34b46; }
+.record-button-danger:hover { color: #7e302c; }
+.account-status-management { display: grid; grid-template-columns: minmax(220px, .75fr) minmax(320px, 1.25fr); gap: 28px; margin-top: 26px; padding-top: 24px; border-top: 1px solid var(--line); }
+.account-status-management h3 { margin: 0 0 4px; font-size: 18px; }
+.account-status-management > div > p { margin: 0; color: var(--muted); font-size: 14px; }
 .organization-form { padding: 4px 28px 28px; }
 .organization-detail-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 0 0 24px; }
 .organization-detail-grid > div { padding: 15px 17px; border: 1px solid var(--line); border-radius: 10px; background: #f9fbfa; }
@@ -444,6 +450,8 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
   .stats-grid { gap: 14px; }
 }
 @media (max-width: 767.98px) {
+  .account-status-management { grid-template-columns: 1fr; gap: 16px; }
+  .record-actions-group { flex-wrap: wrap; }
   .notification-menu { width: min(370px, calc(100vw - 32px)); }
   .notification-summary-grid { gap: 10px; }
   .notification-summary-card { padding: 15px; }

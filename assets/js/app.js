@@ -34,8 +34,57 @@
     }
     approvalRole.addEventListener('change', updateApprovalScope);
     province.addEventListener('change', updateApprovalScope);
+    cooperative.addEventListener('change', function () {
+      const selectedValue = cooperative.value;
+      const selectedOption = cooperative.selectedOptions[0];
+      if (selectedOption && selectedOption.dataset.province && province.value !== selectedOption.dataset.province) {
+        province.value = selectedOption.dataset.province;
+        updateApprovalScope();
+        cooperative.value = selectedValue;
+      }
+    });
     updateApprovalScope();
   }
+  const managedRole = document.getElementById('managedRole');
+  if (managedRole) {
+    const managedProvince = document.getElementById('managedProvince');
+    const managedCooperative = document.getElementById('managedCooperative');
+    const managedProvinceField = document.getElementById('managedProvinceField');
+    const managedCooperativeField = document.getElementById('managedCooperativeField');
+    function updateManagedScope() {
+      const needsProvince = managedRole.value !== 'central_officer';
+      const needsCooperative = managedRole.value === 'cooperative_user';
+      managedProvinceField.hidden = !needsProvince;
+      managedCooperativeField.hidden = !needsCooperative;
+      managedProvince.disabled = !needsProvince;
+      managedProvince.required = needsProvince;
+      managedCooperative.disabled = !needsCooperative;
+      managedCooperative.required = needsCooperative;
+      Array.from(managedCooperative.options).forEach(function (option) {
+        const available = !option.value || option.dataset.province === managedProvince.value;
+        option.hidden = !available;
+        option.disabled = !available;
+        if (!available && option.selected) managedCooperative.value = '';
+      });
+    }
+    managedRole.addEventListener('change', updateManagedScope);
+    managedProvince.addEventListener('change', updateManagedScope);
+    managedCooperative.addEventListener('change', function () {
+      const selectedValue = managedCooperative.value;
+      const selectedOption = managedCooperative.selectedOptions[0];
+      if (selectedOption && selectedOption.dataset.province && managedProvince.value !== selectedOption.dataset.province) {
+        managedProvince.value = selectedOption.dataset.province;
+        updateManagedScope();
+        managedCooperative.value = selectedValue;
+      }
+    });
+    updateManagedScope();
+  }
+  document.querySelectorAll('form[data-confirm]').forEach(function (form) {
+    form.addEventListener('submit', function (event) {
+      if (!window.confirm(form.dataset.confirm)) event.preventDefault();
+    });
+  });
   const passwordInput = document.getElementById('loginPassword');
   const passwordToggle = document.getElementById('passwordToggle');
   if (passwordInput && passwordToggle) {

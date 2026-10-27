@@ -29,5 +29,5 @@
       <p>ข้อมูลเป็นระบบ<br><strong>ติดตามงานได้ง่ายขึ้น</strong></p>
     </div>
   </div>
-  <div class="sidebar-footer"><?= app_icon('pin') ?><span>จังหวัดร้อยเอ็ด</span><small>ระบบสารสนเทศ กพส.</small></div>
+  <div class="sidebar-footer"><?= app_icon('pin') ?><span>จังหวัดร้อยเอ็ด</span></div>
 </aside>
