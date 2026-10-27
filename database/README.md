@@ -5,6 +5,8 @@
 1. `001_user_access.sql` — ผู้ใช้งาน บทบาท สิทธิ์ จังหวัด และทะเบียนหน่วยงาน
 2. `002_registration_approval.sql` — สมัครสมาชิก การอนุมัติบัญชี และการจำกัดคำขอเข้าสู่ระบบ
 3. `003_core_workflow.sql` — ข้อมูลหน่วยงาน เจ้าหน้าที่รับผิดชอบ คำขอกู้ เอกสาร การตรวจสอบ สัญญา การชำระ และประวัติการดำเนินการ
+4. `004_provincial_office_registration.sql` — เพิ่มสำนักงานสหกรณ์จังหวัดร้อยเอ็ดในประเภทหน่วยงานของแบบฟอร์มสมัคร
+5. `005_tracking_notifications.sql` — งานตามกระบวนการ กำหนดเวลา และศูนย์แจ้งเตือนภายในระบบ
 
 ## บทบาท
 
@@ -46,6 +48,8 @@
 | `loan_contracts` | สัญญาที่สร้างจากคำขออนุมัติ |
 | `repayment_schedules`, `repayments` | ตารางชำระและรายการรับชำระ |
 | `audit_logs` | ประวัติการเปลี่ยนแปลงข้อมูลสำคัญ |
+| `workflow_tasks`, `notification_rules` | งาน ผู้รับผิดชอบ กำหนดเวลา และกติกาการติดตาม |
+| `notifications`, `notification_deliveries` | การแจ้งเตือนและสถานะการส่งแต่ละช่องทาง |
 
 ## การนำเข้า
 
@@ -53,6 +57,8 @@
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/001_user_access.sql
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/002_registration_approval.sql
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/003_core_workflow.sql
+mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/004_provincial_office_registration.sql
+mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/005_tracking_notifications.sql
 ```
 
 ฐานข้อมูลบนโฮสต์ปัจจุบันนำเข้าถึง `003_core_workflow.sql` แล้ว ตรวจสอบได้ด้วย:
@@ -75,3 +81,13 @@ TEST_DB_USER='test_user' php tests/user_access_schema_test.php
 ```
 
 กระบวนการใน migration 003 ผ่านการทดสอบด้วย PHP 7.4 และ MariaDB ตั้งแต่สมัครและอนุมัติบัญชี สร้างหน่วยงาน สร้างคำขอพร้อมผู้ค้ำหลายคน ส่งตรวจสองระดับ อนุมัติ และสร้างรายการรอจัดทำสัญญา
+
+## การประมวลผลแจ้งเตือนตามกำหนดเวลา
+
+ระบบจะตรวจงานเมื่อผู้ใช้เข้าสู่ระบบ และสามารถตั้ง Cron ให้ตรวจทุก 15 นาทีเพื่อสร้างการแจ้งเตือนล่วงหน้า/เกินกำหนดได้:
+
+```sh
+*/15 * * * * /usr/bin/php /path/to/roietkps/tools/run-notifications.php
+```
+
+ให้ปรับ path ของ PHP และโครงการตามค่าจริงบนโฮสต์ คำสั่งนี้ไม่ต้องเปิดผ่านเว็บไซต์

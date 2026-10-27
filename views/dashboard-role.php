@@ -25,9 +25,20 @@ $applicationStatuses = [
   <?php endforeach; ?>
 </section>
 
+<?php if (!empty($roleDashboard['my_tasks'])): ?>
+<section class="surface role-task-panel personal-task-panel">
+  <div class="surface-heading"><div><h2>งานของฉัน</h2><p>รายการที่ควรดำเนินการก่อนตามกำหนดเวลา</p></div><a class="text-link" href="index.php?page=notifications">ดูทั้งหมด <?= app_icon('arrow') ?></a></div>
+  <div class="workflow-task-list compact-workflow-task-list">
+    <?php foreach ($roleDashboard['my_tasks'] as $task): ?>
+      <a class="workflow-task-item task-state-<?= e($task['due_state']) ?>" href="<?= e(notification_safe_action_url($task['action_url'])) ?>"><span class="workflow-task-marker tone-<?= $task['due_state'] === 'overdue' ? 'red' : ($task['due_state'] === 'due_soon' ? 'amber' : 'blue') ?>"><?= app_icon($task['due_state'] === 'overdue' ? 'alert' : 'clock') ?></span><span class="workflow-task-copy"><strong><?= e($task['title']) ?></strong><small><?= e($task['description'] ?: 'เปิดรายการเพื่อดำเนินการ') ?></small></span><span class="workflow-task-due"><small><?= $task['due_state'] === 'overdue' ? 'เกินกำหนด' : 'กำหนดเสร็จ' ?></small><strong><?= e(notification_due_label($task['due_at'])) ?></strong></span><?= app_icon('chevron') ?></a>
+    <?php endforeach; ?>
+  </div>
+</section>
+<?php endif; ?>
+
 <?php if ($roleDashboard['tasks']): ?>
 <section class="surface role-task-panel">
-  <div class="surface-heading"><div><h2>งานที่ต้องดำเนินการ</h2><p>เรียงตามขั้นตอนที่เกี่ยวข้องกับบทบาทของคุณ</p></div><?= app_icon('clock') ?></div>
+  <div class="surface-heading"><div><h2>สรุปงานตามขั้นตอน</h2><p>ภาพรวมรายการที่เกี่ยวข้องกับบทบาทของคุณ</p></div><?= app_icon('clock') ?></div>
   <div class="task-list">
     <?php foreach ($roleDashboard['tasks'] as $task): ?>
       <a class="task-item" href="<?= e($task['href']) ?>"><span class="task-icon tone-<?= e($task['tone']) ?>"><?= app_icon($task['icon']) ?></span><span class="task-copy"><strong><?= e($task['title']) ?></strong><small><?= e($task['description']) ?></small></span><span class="task-count"><?= e($task['count']) ?><small><?= e($task['unit']) ?></small></span><?= app_icon('chevron') ?></a>

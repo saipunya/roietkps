@@ -30,6 +30,8 @@ function app_icon($name)
         'user' => 'person-fill',
         'eye' => 'eye-fill',
         'eye-off' => 'eye-slash-fill',
+        'bell' => 'bell-fill',
+        'briefcase' => 'briefcase-fill',
     ];
     $icon = isset($icons[$name]) ? $icons[$name] : $icons['document'];
     return '<i class="bi bi-' . $icon . ' app-icon" aria-hidden="true"></i>';

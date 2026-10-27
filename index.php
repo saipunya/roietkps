@@ -10,6 +10,7 @@ $pages = [
     'debt' => ['title' => 'ติดตามหนี้', 'description' => 'ตรวจสอบกำหนดชำระและรายการที่ต้องติดตาม', 'icon' => 'clock', 'permission' => 'debt.view'],
     'reports' => ['title' => 'รายงาน', 'description' => 'เลือกชุดข้อมูลที่ต้องการตรวจสอบหรือส่งออก', 'icon' => 'chart', 'permission' => 'reports.view'],
     'users' => ['title' => 'ผู้ใช้งานและสิทธิ์', 'description' => 'ตรวจคำขอสมัครสมาชิกและกำหนดสิทธิ์เข้าใช้งาน', 'icon' => 'users', 'permission' => 'users.manage'],
+    'notifications' => ['title' => 'งานและการแจ้งเตือน', 'description' => 'ติดตามงานที่ต้องดำเนินการ กำหนดเวลา และข่าวสารของคุณ', 'icon' => 'bell', 'permission' => 'notifications.view', 'hidden' => true],
 ];
 $requestedPage = isset($_GET['page']) && is_string($_GET['page']) ? $_GET['page'] : 'dashboard';
 $page = array_key_exists($requestedPage, $pages) ? $requestedPage : 'dashboard';
@@ -23,12 +24,21 @@ $loginNotice = isset($_SESSION['registration_complete'])
     ? 'สมัครสมาชิกสำเร็จ บัญชีของคุณกำลังรอ Admin อนุมัติ'
     : '';
 unset($_SESSION['registration_complete']);
+$notificationMenu = ['unread' => 0, 'items' => []];
 
 try {
     $currentUser = current_account();
     if ($currentUser && (int) $currentUser['must_change_password'] === 1) {
         header('Location: change-password.php', true, 303);
         exit;
+    }
+    if ($currentUser && account_can($currentUser, 'notifications.view')) {
+        $lastTrackingRefresh = isset($_SESSION['tracking_refreshed_at']) ? (int) $_SESSION['tracking_refreshed_at'] : 0;
+        if (time() - $lastTrackingRefresh >= 300 || $page === 'notifications') {
+            tracking_refresh_user(app_db(), $currentUser);
+            $_SESSION['tracking_refreshed_at'] = time();
+        }
+        $notificationMenu = notification_menu_data(app_db(), (int) $currentUser['id']);
     }
     if ($page !== 'dashboard') {
         $currentUser = require_account();
@@ -46,6 +56,9 @@ try {
     } elseif ($page === 'loans') {
         header('Cache-Control: no-store');
         require __DIR__ . '/includes/loans.php';
+    } elseif ($page === 'notifications') {
+        header('Cache-Control: no-store');
+        require __DIR__ . '/includes/notification-center.php';
     }
 } catch (Throwable $exception) {
     error_log('Account page unavailable (code: ' . $exception->getCode() . ')');
@@ -70,6 +83,22 @@ require __DIR__ . '/nav.php';
     </div>
     <div class="topbar-actions">
       <?php if ($currentUser): ?>
+      <div class="dropdown notification-dropdown">
+        <button class="btn icon-button notification-button" type="button" data-bs-toggle="dropdown"
+          data-bs-auto-close="outside" aria-expanded="false" aria-label="การแจ้งเตือนที่ยังไม่อ่าน <?= (int) $notificationMenu['unread'] ?> รายการ">
+          <?= app_icon('bell') ?><?php if ($notificationMenu['unread'] > 0): ?><span class="notification-count"><?= e(min(99, $notificationMenu['unread'])) ?><?= $notificationMenu['unread'] > 99 ? '+' : '' ?></span><?php endif; ?>
+        </button>
+        <div class="dropdown-menu dropdown-menu-end notification-menu">
+          <div class="notification-menu-heading"><strong>การแจ้งเตือน</strong><a href="index.php?page=notifications">ดูทั้งหมด</a></div>
+          <?php if (!$notificationMenu['items']): ?><p class="notification-menu-empty">ยังไม่มีการแจ้งเตือน</p><?php else: ?>
+          <div class="notification-menu-items">
+            <?php foreach ($notificationMenu['items'] as $menuNotification): ?>
+            <form action="index.php?page=notifications" method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="open_notification"><input type="hidden" name="notification_id" value="<?= (int) $menuNotification['id'] ?>"><button class="notification-menu-item" type="submit"><span class="notification-menu-icon tone-<?= $menuNotification['priority'] === 'urgent' ? 'red' : ($menuNotification['priority'] === 'warning' ? 'amber' : 'green') ?>"><?= app_icon($menuNotification['priority'] === 'urgent' ? 'alert' : 'bell') ?></span><span><strong><?= e($menuNotification['title']) ?></strong><small><?= e(mb_substr($menuNotification['message'], 0, 90, 'UTF-8')) ?></small><time><?= e(notification_time_label($menuNotification['created_at'])) ?></time></span></button></form>
+            <?php endforeach; ?>
+          </div>
+          <?php endif; ?>
+        </div>
+      </div>
       <span class="signed-in-name"><?= e($currentUser['full_name']) ?></span>
       <form action="logout.php" method="post"><input type="hidden" name="csrf_token"
           value="<?= e(csrf_token()) ?>"><button class="btn btn-outline-primary login-link"
@@ -104,6 +133,8 @@ require __DIR__ . '/nav.php';
         require __DIR__ . '/views/loans.php';
     } elseif ($page === 'users') {
         require __DIR__ . '/views/users.php';
+    } elseif ($page === 'notifications') {
+        require __DIR__ . '/views/notifications.php';
     } else {
         require __DIR__ . '/views/records.php';
     }

@@ -333,6 +333,78 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
 .loan-list-heading strong { font-size: 18px; }
 .loan-list-heading span { color: var(--muted); font-size: 13px; }
 
+/* Workflow tracking and notification center. */
+.notification-dropdown { position: relative; }
+.notification-button { position: relative; color: #496358; background: #fff; }
+.notification-button:hover, .notification-button.show { color: var(--green); background: #f2f7f4; border-color: #c8d9d0; }
+.notification-count { position: absolute; top: -6px; right: -7px; display: grid; place-items: center; min-width: 21px; height: 21px; padding: 0 5px; border: 2px solid #fff; border-radius: 999px; color: #fff; background: #b34f49; font-size: 11px; font-weight: 700; line-height: 1; }
+.notification-menu { width: min(400px, calc(100vw - 28px)); margin-top: 10px !important; padding: 0; overflow: hidden; border: 1px solid #dce5e0; border-radius: 12px; box-shadow: 0 18px 50px rgb(25 62 48 / 16%); }
+.notification-menu-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; border-bottom: 1px solid var(--line); background: #f8faf9; }
+.notification-menu-heading strong { font-size: 17px; }
+.notification-menu-heading a { font-size: 13px; font-weight: 600; }
+.notification-menu-items form { border-bottom: 1px solid #edf0ee; }
+.notification-menu-items form:last-child { border-bottom: 0; }
+.notification-menu-item { display: flex; align-items: flex-start; gap: 11px; width: 100%; padding: 14px 16px; border: 0; color: var(--ink); background: #fff; text-align: left; }
+.notification-menu-item:hover { background: #f7faf8; }
+.notification-menu-icon { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; border-radius: 9px; }
+.notification-menu-icon .app-icon { font-size: 17px; }
+.notification-menu-item > span:last-child { min-width: 0; }
+.notification-menu-item strong, .notification-menu-item small, .notification-menu-item time { display: block; }
+.notification-menu-item strong { font-size: 14px; font-weight: 600; }
+.notification-menu-item small { margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.notification-menu-item time { margin-top: 4px; color: #849188; font-size: 11px; }
+.notification-menu-empty { margin: 0; padding: 28px 18px; color: var(--muted); font-size: 14px; text-align: center; }
+.notification-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
+.notification-summary-card { display: flex; align-items: center; gap: 15px; padding: 19px 21px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.notification-summary-icon { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 auto; border-radius: 12px; }
+.notification-summary-icon .app-icon { font-size: 22px; }
+.notification-summary-card strong, .notification-summary-card span { display: block; }
+.notification-summary-card strong { font-size: 27px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.notification-summary-card div > span { margin-top: 2px; color: var(--muted); font-size: 14px; }
+.notification-section { margin-bottom: 20px; overflow: hidden; }
+.notification-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 21px 24px 16px; }
+.notification-section-heading h2 { margin: 0; font-size: 19px; font-weight: 600; }
+.notification-section-heading p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+.notification-filter { display: flex; gap: 6px; padding: 0 24px 14px; border-bottom: 1px solid var(--line); }
+.notification-filter a { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 7px; color: #5d7064; font-size: 14px; }
+.notification-filter a:hover { color: var(--green); background: #f1f6f3; }
+.notification-filter a.active { color: #fff; background: var(--green); font-weight: 600; }
+.notification-filter a span { min-width: 20px; padding: 0 5px; border-radius: 999px; background: rgb(255 255 255 / 20%); text-align: center; }
+.workflow-task-list { padding: 0 24px 10px; }
+.compact-workflow-task-list { padding-bottom: 8px; }
+.workflow-task-item { display: flex; align-items: center; gap: 13px; min-height: 72px; padding: 14px 0; border-top: 1px solid #edf0ee; color: var(--ink); }
+.workflow-task-item:first-child { border-top: 0; }
+.workflow-task-item:hover .workflow-task-copy strong { color: var(--green); }
+.workflow-task-marker { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 10px; }
+.workflow-task-marker .app-icon { font-size: 19px; }
+.workflow-task-copy { flex: 1; min-width: 0; }
+.workflow-task-copy strong, .workflow-task-copy small { display: block; }
+.workflow-task-copy strong { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.workflow-task-copy small { margin-top: 2px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.workflow-task-due { flex: 0 0 155px; text-align: right; }
+.workflow-task-due small, .workflow-task-due strong { display: block; }
+.workflow-task-due small { color: var(--muted); font-size: 11px; }
+.workflow-task-due strong { margin-top: 2px; font-size: 13px; font-weight: 500; }
+.task-state-overdue .workflow-task-due { color: #a34b46; }
+.workflow-task-item > .app-icon { color: #95a39a; font-size: 13px; }
+.notification-list { padding: 0 24px 10px; }
+.notification-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 18px 0; border-bottom: 1px solid #edf0ee; }
+.notification-row:last-child { border-bottom: 0; }
+.notification-row.is-unread { margin: 0 -24px; padding-right: 24px; padding-left: 24px; background: #f7faf8; }
+.notification-row-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 11px; }
+.notification-row-icon .app-icon { font-size: 20px; }
+.notification-row-copy { min-width: 0; }
+.notification-row-title { display: flex; align-items: center; gap: 8px; }
+.notification-row-title strong { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.unread-dot { flex: 0 0 auto; padding: 2px 7px; border-radius: 999px; color: #216448; background: #dff0e6; font-size: 10px; font-weight: 700; }
+.notification-row-copy p { margin: 3px 0; color: #50645a; font-size: 14px; overflow-wrap: anywhere; }
+.notification-row-copy small { color: #7c8b82; font-size: 12px; }
+.notification-open-button { min-height: 38px; padding: 6px 5px 6px 10px; color: var(--green); background: transparent; border: 0; font-size: 13px; white-space: nowrap; }
+.notification-open-button:hover { color: #163e2f; text-decoration: underline; }
+.notification-open-button .app-icon { font-size: 13px; }
+.compact-empty-state { padding-top: 34px; padding-bottom: 38px; }
+.personal-task-panel { border-color: #d8e6de; }
+
 @media (min-width: 992px) {
   .app-sidebar.offcanvas-lg { position: fixed; inset: 0 auto 0 0; display: flex; flex-direction: column; width: var(--sidebar-width); height: 100vh; height: 100dvh; background: #fff !important; z-index: 1030; }
   .app-workspace { margin-left: var(--sidebar-width); }
@@ -372,6 +444,12 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
   .stats-grid { gap: 14px; }
 }
 @media (max-width: 767.98px) {
+  .notification-menu { width: min(370px, calc(100vw - 32px)); }
+  .notification-summary-grid { gap: 10px; }
+  .notification-summary-card { padding: 15px; }
+  .notification-section-heading { padding: 18px 20px 14px; }
+  .notification-filter, .workflow-task-list, .notification-list { padding-right: 20px; padding-left: 20px; }
+  .notification-row.is-unread { margin-right: -20px; margin-left: -20px; padding-right: 20px; padding-left: 20px; }
   .loan-field-grid, .loan-detail-grid { grid-template-columns: 1fr; }
   .loan-detail-grid > div:first-child { grid-column: auto; }
   .guarantor-summary { grid-template-columns: 1fr; }
@@ -436,6 +514,19 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
   .record-button { min-height: 44px; font-size: 14px; padding: 9px 0 9px 9px; }
 }
 @media (max-width: 575.98px) {
+  .notification-dropdown .notification-menu.show { position: fixed !important; inset: 70px 16px auto 16px !important; width: auto; max-height: calc(100dvh - 86px); overflow-y: auto; transform: none !important; }
+  .notification-summary-grid { grid-template-columns: 1fr; }
+  .notification-summary-card { min-height: 76px; }
+  .notification-section-heading { align-items: flex-start; flex-direction: column; }
+  .notification-section-heading form, .notification-section-heading .btn { width: 100%; }
+  .workflow-task-item { align-items: flex-start; flex-wrap: wrap; }
+  .workflow-task-copy { padding-top: 5px; }
+  .workflow-task-due { flex: 1 0 calc(100% - 51px); margin-left: 51px; text-align: left; }
+  .workflow-task-item > .app-icon { align-self: center; margin-left: auto; }
+  .notification-row { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+  .notification-row form { grid-column: 2; }
+  .notification-open-button { padding-left: 0; }
+  .notification-menu-item { padding: 13px 14px; }
   .loan-form, .loan-detail-body { padding: 2px 20px 22px; }
   .guarantor-row { grid-template-columns: 1fr; }
   .form-section-heading, .loan-list-heading { align-items: flex-start; flex-direction: column; }

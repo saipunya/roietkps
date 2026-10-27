@@ -105,6 +105,7 @@ function load_role_dashboard(PDO $db, array $user): array
         'description' => $description,
         'stats' => $stats,
         'tasks' => $tasks,
+        'my_tasks' => notification_open_tasks($db, (int) $user['id'], 5),
         'recent' => $query->fetchAll(),
     ];
 }

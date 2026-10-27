@@ -19,7 +19,7 @@ header('X-Frame-Options: DENY');
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.2/font/bootstrap-icons.min.css" rel="stylesheet">
-  <link href="assets/css/app.css?v=6" rel="stylesheet">
+  <link href="assets/css/app.css?v=7" rel="stylesheet">
 </head>
 <body<?= !empty($isAuthPage) ? ' class="auth-body"' : '' ?>>
   <a class="skip-link" href="#main-content">ข้ามไปเนื้อหาหลัก</a>

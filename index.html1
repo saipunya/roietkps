@@ -1,0 +1,75 @@
+<!DOCTYPE HTML>
+<!--
+	Identity by HTML5 UP
+	html5up.net | @ajlkn
+	Free for personal and commercial use under the CCA 3.0 license (html5up.net/license)
+-->
+<html>
+	<head>
+		<title>Hostinglotus</title>
+		<link rel="icon" type=â€image/jpgâ€ href="images/lotuslogo.jpg" />
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+		<link rel="stylesheet" href="assets/css/main.css" />
+		<noscript><link rel="stylesheet" href="assets/css/noscript.css" /></noscript>
+	</head>
+	<body class="is-preload">
+			
+		<!-- Wrapper -->
+			<div id="wrapper">
+				<!-- Main -->
+					<section id="main">
+
+						<menu><a href="/index.html" >
+								<img src="images/th.png" alt="TH" style="width:25px;height:25px;border:0;">
+							</a>&nbsp;
+							<a href="/index_us.html" >
+								<img src="images/US.png" alt="US" style="width:25px;height:25px;border:0;">
+							</a>
+						</menu>			
+						<header>
+							<span class="avatar"><img src="images/logo-001.png" height="40" alt="lotus" /></span>
+							<h2>ยินดีต้อนรับสู่หน้าแรกของโดเมน <b>roietkps.com</b></h2>
+							<br>
+							<p>หากต้องการเปลี่ยนหน้านี้ให้อัปโหลดเว็บไซต์ของคุณไปยังไดเรกทอรี PUBLIC_HTML</p>
+							<br>
+					<a href="https://www.hostinglotus.com/hosting/knowledgebase/41/-FTP-File--Server--Program-Filezilla.html" target="_blank"><h3>วิธีการ UPLOAD ข้อมูลขึ้น SERVER โดยการใช้โปรแกรม FILEZILLA คลิก <<<<<<<<<<< </h3></a> 
+						</header>
+									<br><br>
+						<footer>
+							<p>หากมีข้อสงสัยเพิ่มเติมสามารถติดต่อได้ที่</p>
+								<div><a href="https://line.me/ti/p/%40dyr2931w" target="_blank">
+										<img src="images/LINE_logo.png" alt="LINE@" style="width:42px;height:42px;border:0;">
+								 </a>
+								 <br>
+								 <a href="https://line.me/ti/p/%40dyr2931w" target="_blank">LINE :@mcloud</a> 
+								</div>
+	
+							<div><img src="images/phone.png" alt="Phone" style="width:42px;height:42px;border:0;"> <br> Phone : 02-1054-322</div>
+	
+							<div><img src="images/email.png" alt="Email" style="width:42px;height:42px;border:0;"> <br>support@hostinglotus.com</div>
+	
+							</footer>
+
+					</section>
+
+				<!-- Footer -->
+
+					<footer id="footer">
+						<ul class="copyright">
+							<li>&copy; HostingLotus</li>
+						</ul>
+					</footer>
+
+			</div>
+
+		<!-- Scripts -->
+			<script>
+				if ('addEventListener' in window) {
+					window.addEventListener('load', function() { document.body.className = document.body.className.replace(/\bis-preload\b/, ''); });
+					document.body.className += (navigator.userAgent.match(/(MSIE|rv:11\.0)/) ? ' is-ie' : '');
+				}
+			</script>
+
+	</body>
+</html>

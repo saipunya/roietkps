@@ -125,6 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $query->execute([$officer, $oldStatus, $applicationId]);
                 $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, new_values, ip_hash) VALUES (?, 'loan.submit', 'loan_application', ?, ?, ?, ?)");
                 $audit->execute([(int) $currentUser['id'], $applicationId, json_encode(['status' => $oldStatus]), json_encode(['status' => 'submitted']), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
+                tracking_loan_submitted($db, $applicationId, (int) $currentUser['id']);
                 $db->commit();
                 $_SESSION['loan_notice'] = $officer ? 'ส่งคำขอให้เจ้าหน้าที่ส่งเสริมตรวจสอบแล้ว' : 'ส่งคำขอแล้ว ขณะนี้รอจังหวัดมอบหมายเจ้าหน้าที่ส่งเสริม';
                 header('Location: index.php?page=loans&view=' . $applicationId, true, 303);
@@ -151,6 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $db->prepare('UPDATE loan_applications SET status = ?, promotion_reviewed_at = UTC_TIMESTAMP(), row_version = row_version + 1 WHERE id = ?')->execute([$toStatus, $applicationId]);
                 $db->prepare("INSERT INTO loan_reviews (loan_application_id, review_round, review_stage, decision, from_status, to_status, comment, reviewed_by) VALUES (?, ?, 'promotion', ?, ?, ?, ?, ?)")->execute([$applicationId, $application['review_round'], $decision, $application['status'], $toStatus, $comment, $currentUser['id']]);
+                tracking_promotion_reviewed($db, $applicationId, (int) $currentUser['id'], $decision, $comment);
                 $db->commit();
                 $_SESSION['loan_notice'] = $decision === 'forward' ? 'ส่งคำขอให้เจ้าหน้าที่จังหวัดตรวจสอบแล้ว' : 'ส่งรายการกลับให้หน่วยงานแก้ไขแล้ว';
                 header('Location: index.php?page=loans&view=' . $applicationId, true, 303);
@@ -188,6 +190,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $db->prepare("INSERT INTO loan_reviews (loan_application_id, review_round, review_stage, decision, from_status, to_status, comment, reviewed_by) VALUES (?, ?, 'province', ?, 'province_review', ?, ?, ?)")->execute([$applicationId, $application['review_round'], $decision, $toStatus, $comment, $currentUser['id']]);
                 $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, new_values, ip_hash) VALUES (?, ?, 'loan_application', ?, ?, ?, ?)");
                 $audit->execute([(int) $currentUser['id'], 'loan.' . $decision, $applicationId, json_encode(['status' => 'province_review']), json_encode(['status' => $toStatus]), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
+                tracking_province_reviewed($db, $applicationId, (int) $currentUser['id'], $decision, $comment);
                 $db->commit();
                 $_SESSION['loan_notice'] = $decision === 'approve' ? 'อนุมัติคำขอแล้ว ระบบสร้างรายการรอจัดทำสัญญาเรียบร้อย' : ($decision === 'reject' ? 'บันทึกการไม่อนุมัติแล้ว' : 'ส่งรายการกลับให้แก้ไขแล้ว');
                 header('Location: index.php?page=loans&view=' . $applicationId, true, 303);

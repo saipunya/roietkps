@@ -10,6 +10,9 @@
     <p class="nav-caption">พื้นที่ทำงาน</p>
     <nav class="sidebar-nav" aria-label="เมนูหลัก">
       <?php foreach ($pages as $key => $item): ?>
+      <?php if (!empty($item['hidden'])) {
+          continue;
+      } ?>
       <?php if ($key !== 'dashboard' && (!$currentUser || !account_can($currentUser, $item['permission']))) {
           continue;
       } ?>

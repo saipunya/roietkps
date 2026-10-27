@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/session.php';
+require_once __DIR__ . '/notifications.php';
 
 function app_db(): PDO
 {
@@ -46,7 +47,19 @@ function password_error(string $password): string
 
 function request_roles(): array
 {
-    return ['cooperative_user' => 'สหกรณ์ / กลุ่มเกษตรกร'];
+    return [
+        'cooperative_user' => 'สหกรณ์ / กลุ่มเกษตรกร',
+        'provincial_officer' => 'เจ้าหน้าที่จังหวัด',
+    ];
+}
+
+function organization_type_labels(): array
+{
+    return [
+        'cooperative' => 'สหกรณ์',
+        'farmer_group' => 'กลุ่มเกษตรกร',
+        'provincial_office' => 'สำนักงานสหกรณ์จังหวัดร้อยเอ็ด',
+    ];
 }
 
 function assignable_roles(): array
@@ -83,6 +96,7 @@ function register_account(PDO $db, array $values, string $password): int
         $id = (int) $db->lastInsertId();
         $query = $db->prepare('INSERT INTO registration_requests (user_id, organization, organization_type, requested_role) VALUES (?, ?, ?, ?)');
         $query->execute([$id, $values['organization'], $values['organization_type'], $values['requested_role']]);
+        tracking_registration_submitted($db, $id, $values['organization']);
         $db->commit();
         return $id;
     } catch (Throwable $exception) {
@@ -215,6 +229,9 @@ function review_registration(PDO $db, int $actorId, int $userId, string $decisio
             }
             if ($role['data_scope'] === 'cooperative') {
                 if ($createOrganization) {
+                    if (!in_array($request['organization_type'], ['cooperative', 'farmer_group'], true)) {
+                        throw new DomainException('ประเภทหน่วยงานนี้ไม่สามารถสร้างเป็นทะเบียนสหกรณ์หรือกลุ่มเกษตรกรได้');
+                    }
                     $query = $db->prepare("SELECT id FROM cooperatives WHERE name = ? AND province_id = ? AND status = 'active'");
                     $query->execute([$request['organization'], $province]);
                     if ($query->fetchColumn()) {
@@ -246,6 +263,7 @@ function review_registration(PDO $db, int $actorId, int $userId, string $decisio
             throw new DomainException('หมายเหตุต้องไม่เกิน 500 ตัวอักษร');
         }
         $db->prepare('UPDATE registration_requests SET reviewed_by = ?, reviewed_at = UTC_TIMESTAMP(), review_note = ? WHERE user_id = ?')->execute([$actorId, $note === '' ? null : $note, $userId]);
+        tracking_registration_reviewed($db, $userId, $actorId, $decision);
         $audit = $db->prepare('INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, new_values, ip_hash) VALUES (?, ?, ?, ?, ?, ?)');
         $audit->execute([$actorId, $decision === 'approve' ? 'account.approve' : 'account.reject', 'user', $userId, json_encode(['role' => $roleCode, 'province_id' => $province, 'cooperative_id' => $cooperative], JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
         $db->commit();
