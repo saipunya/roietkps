@@ -46,7 +46,17 @@ function password_error(string $password): string
 
 function request_roles(): array
 {
-    return ['cooperative_user' => 'ผู้ใช้สหกรณ์', 'provincial_officer' => 'เจ้าหน้าที่จังหวัด', 'central_officer' => 'เจ้าหน้าที่ส่วนกลาง'];
+    return ['cooperative_user' => 'สหกรณ์ / กลุ่มเกษตรกร'];
+}
+
+function assignable_roles(): array
+{
+    return [
+        'cooperative_user' => 'สหกรณ์ / กลุ่มเกษตรกร',
+        'promotion_officer' => 'เจ้าหน้าที่ส่งเสริม',
+        'provincial_officer' => 'เจ้าหน้าที่จังหวัด',
+        'central_officer' => 'เจ้าหน้าที่ส่วนกลาง',
+    ];
 }
 
 function auth_limit(PDO $db, string $purpose, string $address, int $maximum, int $seconds): bool
@@ -71,8 +81,8 @@ function register_account(PDO $db, array $values, string $password): int
         $query = $db->prepare("INSERT INTO users (username, password_hash, full_name, email, role_id, data_scope, status, must_change_password, password_changed_at) VALUES (?, ?, ?, ?, ?, 'none', 'pending', 0, UTC_TIMESTAMP())");
         $query->execute([$values['username'], password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]), $values['full_name'], $values['email'], $role]);
         $id = (int) $db->lastInsertId();
-        $query = $db->prepare('INSERT INTO registration_requests (user_id, organization, requested_role) VALUES (?, ?, ?)');
-        $query->execute([$id, $values['organization'], $values['requested_role']]);
+        $query = $db->prepare('INSERT INTO registration_requests (user_id, organization, organization_type, requested_role) VALUES (?, ?, ?, ?)');
+        $query->execute([$id, $values['organization'], $values['organization_type'], $values['requested_role']]);
         $db->commit();
         return $id;
     } catch (Throwable $exception) {
@@ -162,7 +172,12 @@ function account_is_admin(array $user): bool
     return $user['role_code'] === 'system_admin' && in_array('users.manage', $user['permissions'], true);
 }
 
-function review_registration(PDO $db, int $actorId, int $userId, string $decision, string $roleCode, ?int $province, ?int $cooperative, string $note): void
+function account_can(array $user, string $permission): bool
+{
+    return in_array($permission, $user['permissions'], true);
+}
+
+function review_registration(PDO $db, int $actorId, int $userId, string $decision, string $roleCode, ?int $province, ?int $cooperative, bool $createOrganization, string $note): void
 {
     $db->beginTransaction();
     try {
@@ -172,27 +187,23 @@ function review_registration(PDO $db, int $actorId, int $userId, string $decisio
         if (!$query->fetchColumn() || $actorId === $userId) {
             throw new DomainException('คุณไม่มีสิทธิ์อนุมัติรายการนี้');
         }
-        $query = $db->prepare("SELECT u.id FROM users u JOIN registration_requests q ON q.user_id = u.id WHERE u.id = ? AND u.status = 'pending' AND q.reviewed_at IS NULL FOR UPDATE");
+        $query = $db->prepare("SELECT u.id, q.organization, q.organization_type FROM users u JOIN registration_requests q ON q.user_id = u.id WHERE u.id = ? AND u.status = 'pending' AND q.reviewed_at IS NULL FOR UPDATE");
         $query->execute([$userId]);
-        if (!$query->fetchColumn()) {
+        $request = $query->fetch();
+        if (!$request) {
             throw new DomainException('คำขอนี้ถูกดำเนินการแล้วหรือไม่พบรายการ');
         }
         if ($decision === 'approve') {
-            if (!array_key_exists($roleCode, request_roles())) {
+            if (!array_key_exists($roleCode, assignable_roles())) {
                 throw new DomainException('กรุณาเลือกบทบาทที่อนุญาต');
             }
             $query = $db->prepare('SELECT id, data_scope FROM roles WHERE code = ? AND is_active = 1');
             $query->execute([$roleCode]);
             $role = $query->fetch();
-            $expectedScope = ['central_officer' => 'all', 'provincial_officer' => 'province', 'cooperative_user' => 'cooperative'];
+            $expectedScope = ['central_officer' => 'all', 'provincial_officer' => 'province', 'promotion_officer' => 'province', 'cooperative_user' => 'cooperative'];
             if (!$role || $role['data_scope'] !== $expectedScope[$roleCode] || ($role['data_scope'] === 'all' && ($province !== null || $cooperative !== null)) || ($role['data_scope'] === 'province' && (!$province || $cooperative !== null)) || ($role['data_scope'] === 'cooperative' && (!$province || !$cooperative))) {
-                throw new DomainException('กรุณากำหนดจังหวัดและสหกรณ์ให้ตรงกับบทบาท');
-            }
-            if ($role['data_scope'] === 'cooperative') {
-                $query = $db->prepare("SELECT id FROM cooperatives WHERE id = ? AND province_id = ? AND status = 'active'");
-                $query->execute([$cooperative, $province]);
-                if (!$query->fetchColumn()) {
-                    throw new DomainException('สหกรณ์ไม่อยู่ในจังหวัดที่เลือกหรือถูกระงับ');
+                if (!($role && $role['data_scope'] === 'cooperative' && $province && $createOrganization && $cooperative === null)) {
+                    throw new DomainException('กรุณากำหนดจังหวัดและหน่วยงานให้ตรงกับบทบาท');
                 }
             }
             if ($province !== null) {
@@ -200,6 +211,25 @@ function review_registration(PDO $db, int $actorId, int $userId, string $decisio
                 $query->execute([$province]);
                 if (!$query->fetchColumn()) {
                     throw new DomainException('ไม่พบจังหวัดที่เลือก');
+                }
+            }
+            if ($role['data_scope'] === 'cooperative') {
+                if ($createOrganization) {
+                    $query = $db->prepare("SELECT id FROM cooperatives WHERE name = ? AND province_id = ? AND status = 'active'");
+                    $query->execute([$request['organization'], $province]);
+                    if ($query->fetchColumn()) {
+                        throw new DomainException('มีหน่วยงานชื่อนี้แล้ว กรุณาเลือกหน่วยงานเดิมจากรายการ');
+                    }
+                    $code = 'ORG-' . gmdate('Ymd') . '-' . $userId;
+                    $query = $db->prepare("INSERT INTO cooperatives (code, name, organization_type, province_id, status, profile_status) VALUES (?, ?, ?, ?, 'active', 'incomplete')");
+                    $query->execute([$code, $request['organization'], $request['organization_type'], $province]);
+                    $cooperative = (int) $db->lastInsertId();
+                } else {
+                    $query = $db->prepare("SELECT id FROM cooperatives WHERE id = ? AND province_id = ? AND status = 'active'");
+                    $query->execute([$cooperative, $province]);
+                    if (!$query->fetchColumn()) {
+                        throw new DomainException('หน่วยงานไม่อยู่ในจังหวัดที่เลือกหรือถูกระงับ');
+                    }
                 }
             }
             $query = $db->prepare("UPDATE users SET role_id = ?, data_scope = ?, province_id = ?, cooperative_id = ?, status = 'active' WHERE id = ?");
@@ -216,6 +246,8 @@ function review_registration(PDO $db, int $actorId, int $userId, string $decisio
             throw new DomainException('หมายเหตุต้องไม่เกิน 500 ตัวอักษร');
         }
         $db->prepare('UPDATE registration_requests SET reviewed_by = ?, reviewed_at = UTC_TIMESTAMP(), review_note = ? WHERE user_id = ?')->execute([$actorId, $note === '' ? null : $note, $userId]);
+        $audit = $db->prepare('INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, new_values, ip_hash) VALUES (?, ?, ?, ?, ?, ?)');
+        $audit->execute([$actorId, $decision === 'approve' ? 'account.approve' : 'account.reject', 'user', $userId, json_encode(['role' => $roleCode, 'province_id' => $province, 'cooperative_id' => $cooperative], JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
         $db->commit();
     } catch (Throwable $exception) {
         $db->rollBack();

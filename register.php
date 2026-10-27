@@ -4,7 +4,7 @@ require_once __DIR__ . '/includes/accounts.php';
 header('Cache-Control: no-store');
 $pageTitle = 'สมัครสมาชิก';
 $isAuthPage = true;
-$values = ['full_name' => '', 'username' => '', 'email' => '', 'organization' => '', 'requested_role' => 'cooperative_user'];
+$values = ['full_name' => '', 'username' => '', 'email' => '', 'organization' => '', 'organization_type' => 'cooperative', 'requested_role' => 'cooperative_user'];
 $errors = [];
 $formError = '';
 
@@ -30,6 +30,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if (!array_key_exists($values['requested_role'], request_roles())) {
             $errors['requested_role'] = 'กรุณาเลือกประเภทผู้ใช้งาน';
+        }
+        if (!in_array($values['organization_type'], ['cooperative', 'farmer_group'], true)) {
+            $errors['organization_type'] = 'กรุณาเลือกประเภทหน่วยงาน';
         }
         if ($error = password_error($password)) {
             $errors['password'] = $error;
@@ -103,7 +106,8 @@ require __DIR__ . '/header.php';
             <div class="auth-field"><label class="form-label" for="register-<?= e($key) ?>"><?= e($field[0]) ?></label><input class="form-control<?= isset($errors[$key]) ? ' is-invalid' : '' ?>" id="register-<?= e($key) ?>" name="<?= e($key) ?>" type="<?= e($field[1]) ?>" maxlength="<?= $field[2] ?>" autocomplete="<?= e($field[3]) ?>" value="<?= e($values[$key]) ?>" required<?= isset($errors[$key]) ? ' aria-invalid="true" aria-describedby="error-' . e($key) . '"' : '' ?><?= $key === 'username' ? ' autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9][A-Za-z0-9._-]{3,49}"' : '' ?>><?php if (isset($errors[$key])): ?><p class="auth-field-error" id="error-<?= e($key) ?>"><?= e($errors[$key]) ?></p><?php endif; ?></div>
           <?php endforeach; ?>
         </div>
-        <div class="auth-field"><label class="form-label" for="requestedRole">ประเภทผู้ใช้งานที่ขอ</label><select class="form-select" name="requested_role" id="requestedRole" required><?php foreach (request_roles() as $code => $name): ?><option value="<?= e($code) ?>"<?= $values['requested_role'] === $code ? ' selected' : '' ?>><?= e($name) ?></option><?php endforeach; ?></select><?php if (isset($errors['requested_role'])): ?><p class="auth-field-error" role="alert"><?= e($errors['requested_role']) ?></p><?php endif; ?></div>
+        <input type="hidden" name="requested_role" value="cooperative_user">
+        <div class="auth-field"><label class="form-label" for="organizationType">ประเภทหน่วยงาน</label><select class="form-select<?= isset($errors['organization_type']) ? ' is-invalid' : '' ?>" name="organization_type" id="organizationType" required><option value="cooperative"<?= $values['organization_type'] === 'cooperative' ? ' selected' : '' ?>>สหกรณ์</option><option value="farmer_group"<?= $values['organization_type'] === 'farmer_group' ? ' selected' : '' ?>>กลุ่มเกษตรกร</option></select><?php if (isset($errors['organization_type'])): ?><p class="auth-field-error" role="alert"><?= e($errors['organization_type']) ?></p><?php endif; ?></div>
         <div class="registration-grid">
           <?php foreach (['password' => 'รหัสผ่าน', 'password_confirmation' => 'ยืนยันรหัสผ่าน'] as $key => $label): ?>
           <div class="auth-field"><label class="form-label" for="register-<?= e($key) ?>"><?= e($label) ?></label><div class="password-input-wrap auth-input-wrap plain-password"><input class="form-control<?= isset($errors[$key]) ? ' is-invalid' : '' ?>" id="register-<?= e($key) ?>" type="password" name="<?= e($key) ?>" autocomplete="new-password" minlength="8" maxlength="72" required aria-describedby="passwordHint<?= isset($errors[$key]) ? ' error-' . e($key) : '' ?>"<?= isset($errors[$key]) ? ' aria-invalid="true"' : '' ?>><button class="password-toggle" type="button" data-toggle-password="register-<?= e($key) ?>" aria-label="แสดง<?= e($label) ?>" aria-controls="register-<?= e($key) ?>" aria-pressed="false" hidden><?= app_icon('eye') ?></button></div><?php if (isset($errors[$key])): ?><p class="auth-field-error" id="error-<?= e($key) ?>"><?= e($errors[$key]) ?></p><?php endif; ?></div>
@@ -118,6 +122,6 @@ require __DIR__ . '/header.php';
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
-<script src="assets/js/app.js?v=3"></script>
+<script src="assets/js/app.js?v=5"></script>
 </body>
 </html>

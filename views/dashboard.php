@@ -1,4 +1,11 @@
 <?php
+if ($currentUser) {
+    require_once __DIR__ . '/../includes/dashboard-data.php';
+    $roleDashboard = load_role_dashboard(app_db(), $currentUser);
+    require __DIR__ . '/dashboard-role.php';
+    return;
+}
+
 $summary = $dashboardData['summary'];
 $pending = array_sum($dashboardData['request_status']['values']) - $summary['approved_requests'];
 $overdue = $summary['overdue'];

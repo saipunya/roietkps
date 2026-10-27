@@ -20,7 +20,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $province = post_text('province_id');
             $cooperative = post_text('cooperative_id');
-            review_registration($db, (int) $currentUser['id'], (int) $userId, post_text('decision'), post_text('role_code'), $province === '' ? null : (int) $province, $cooperative === '' ? null : (int) $cooperative, post_text('review_note'));
+            $createOrganization = $cooperative === 'new';
+            review_registration($db, (int) $currentUser['id'], (int) $userId, post_text('decision'), post_text('role_code'), $province === '' ? null : (int) $province, $createOrganization || $cooperative === '' ? null : (int) $cooperative, $createOrganization, post_text('review_note'));
             $_SESSION['approval_notice'] = post_text('decision') === 'approve' ? 'อนุมัติบัญชีแล้ว ผู้สมัครเข้าสู่ระบบได้ทันที' : 'บันทึกการไม่อนุมัติแล้ว';
             header('Location: index.php?page=users', true, 303);
             exit;
@@ -47,7 +48,7 @@ $userCount = (int) $query->fetchColumn();
 $userPage = isset($_GET['p']) && is_scalar($_GET['p']) ? max(1, (int) $_GET['p']) : 1;
 $totalUserPages = max(1, (int) ceil($userCount / 20));
 $userPage = min($userPage, $totalUserPages);
-$query = $db->prepare('SELECT u.id, u.username, u.full_name, u.email, u.status, r.name AS role_name, q.organization, q.requested_role, q.reviewed_at, q.review_note, a.full_name AS reviewer_name FROM users u JOIN roles r ON r.id = u.role_id LEFT JOIN registration_requests q ON q.user_id = u.id LEFT JOIN users a ON a.id = q.reviewed_by WHERE ' . $where . ' ORDER BY u.created_at, u.id LIMIT 20 OFFSET ' . (($userPage - 1) * 20));
+$query = $db->prepare('SELECT u.id, u.username, u.full_name, u.email, u.status, r.name AS role_name, q.organization, q.organization_type, q.requested_role, q.reviewed_at, q.review_note, a.full_name AS reviewer_name FROM users u JOIN roles r ON r.id = u.role_id LEFT JOIN registration_requests q ON q.user_id = u.id LEFT JOIN users a ON a.id = q.reviewed_by WHERE ' . $where . ' ORDER BY u.created_at, u.id LIMIT 20 OFFSET ' . (($userPage - 1) * 20));
 $query->execute($parameters);
 $accountRows = $query->fetchAll();
 $reviewId = isset($_GET['review']) && is_scalar($_GET['review']) ? (int) $_GET['review'] : 0;
@@ -58,7 +59,7 @@ $reviewRequest = null;
 $approvalProvinces = [];
 $approvalCooperatives = [];
 if ($reviewId > 0) {
-    $query = $db->prepare("SELECT u.id, u.username, u.full_name, u.email, q.organization, q.requested_role FROM users u JOIN registration_requests q ON q.user_id = u.id WHERE u.id = ? AND u.status = 'pending' AND q.reviewed_at IS NULL");
+    $query = $db->prepare("SELECT u.id, u.username, u.full_name, u.email, q.organization, q.organization_type, q.requested_role FROM users u JOIN registration_requests q ON q.user_id = u.id WHERE u.id = ? AND u.status = 'pending' AND q.reviewed_at IS NULL");
     $query->execute([$reviewId]);
     $reviewRequest = $query->fetch();
     $approvalProvinces = $db->query('SELECT id, name FROM provinces ORDER BY name')->fetchAll();

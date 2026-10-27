@@ -58,7 +58,9 @@ button, input, select { font: inherit; }
 .app-workspace { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 76px; padding: 15px 36px; border-bottom: 1px solid var(--line); background: #fff; }
 .topbar-leading { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.topbar-title { font-size: 15px; font-weight: 500; color: #586b5f; }
+.topbar-agency-icon { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; border-radius: 9px; color: var(--green); background: #eaf2ed; }
+.topbar-agency-icon .app-icon { font-size: 18px; }
+.topbar-title { font-size: 16px; font-weight: 500; color: #586b5f; }
 .topbar-actions { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
 .login-link { white-space: nowrap; }
 .login-link .app-icon { width: 17px; height: 17px; font-size: 17px; }
@@ -87,6 +89,15 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
 .stat-value { font-size: 34px; font-weight: 600; line-height: 1.45; font-variant-numeric: tabular-nums; margin: 13px 0 7px; letter-spacing: -.6px; }
 .stat-value span { margin-left: 7px; font-size: 14px; font-weight: 400; letter-spacing: 0; color: var(--muted); }
 .stat-note { margin: 0; font-size: 13px; color: var(--muted); }
+.role-dashboard-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 20px; padding: 24px 28px; border: 1px solid #dce8e1; border-radius: 14px; background: linear-gradient(120deg, #f4f8f5, #fff); }
+.role-dashboard-heading h2 { margin: 0; font-size: 25px; font-weight: 700; }
+.role-dashboard-heading p { margin: 4px 0 0; color: var(--muted); }
+.role-dashboard-heading .eyebrow { margin: 0 0 3px; color: #3f765e; font-size: 13px; font-weight: 600; }
+.role-dashboard-mark { display: grid; place-items: center; width: 54px; height: 54px; flex-shrink: 0; border-radius: 15px; color: #fff; background: var(--green); box-shadow: 0 10px 24px rgb(36 93 75 / 18%); }
+.role-dashboard-mark .app-icon { font-size: 27px; }
+.role-task-panel { margin-bottom: 24px; }
+.role-task-panel > .surface-heading > .app-icon { color: #799083; }
+.role-recent-section { margin-top: 0; }
 .chart-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(330px, .85fr); gap: 22px; margin-bottom: 24px; }
 .chart-card { min-width: 0; overflow: hidden; }
 .chart-heading-icon { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 11px; }
@@ -278,6 +289,49 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
 .account-meta { display: block; font-size: 12px; color: var(--muted); white-space: normal; overflow-wrap: anywhere; }
 .review-note { max-width: 220px; }
 .user-pagination { display: flex; justify-content: space-between; gap: 16px; padding: 20px 24px; }
+.organization-form { padding: 4px 28px 28px; }
+.organization-detail-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 0 0 24px; }
+.organization-detail-grid > div { padding: 15px 17px; border: 1px solid var(--line); border-radius: 10px; background: #f9fbfa; }
+.organization-detail-grid dt { color: var(--muted); font-size: 13px; font-weight: 400; }
+.organization-detail-grid dd { margin: 5px 0 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.assignment-form { padding-top: 20px; border-top: 1px solid var(--line); }
+.assignment-controls { display: flex; align-items: stretch; gap: 12px; }
+.assignment-controls .form-select { flex: 1; }
+.loan-form { padding: 4px 28px 30px; }
+.loan-field-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 18px; }
+.form-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 6px 0 14px; padding-top: 22px; border-top: 1px solid var(--line); }
+.form-section-heading h3, .loan-subsection h3 { margin: 0; font-size: 18px; }
+.form-section-heading p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.guarantor-list { display: grid; gap: 12px; }
+.guarantor-row { display: grid; grid-template-columns: 1.25fr 1fr .85fr .9fr auto; align-items: end; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: #f9fbfa; }
+.guarantor-row .form-label { font-size: 13px; }
+.guarantor-remove { min-height: 46px; padding-right: 10px; padding-left: 10px; color: #9e4742; }
+.form-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.form-actions form { margin: 0; }
+.loan-detail-body { padding: 2px 28px 28px; }
+.loan-status-line { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.loan-detail-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.loan-detail-grid > div { padding: 15px 17px; border: 1px solid var(--line); border-radius: 10px; background: #f9fbfa; }
+.loan-detail-grid dt { color: var(--muted); font-size: 13px; font-weight: 400; }
+.loan-detail-grid dd { margin: 5px 0 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.loan-detail-grid > div:first-child { grid-column: span 2; }
+.loan-subsection { margin-top: 24px; padding-top: 22px; border-top: 1px solid var(--line); }
+.guarantor-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.guarantor-summary > div { padding: 13px 15px; border-radius: 9px; background: #f4f8f5; }
+.guarantor-summary strong, .guarantor-summary span { display: block; }
+.guarantor-summary span { margin-top: 2px; color: var(--muted); font-size: 13px; }
+.review-decision-form { margin-top: 24px; padding: 22px; border: 1px solid #dce8e1; border-radius: 12px; background: #f8fbf9; }
+.review-timeline { display: grid; gap: 0; margin-top: 14px; }
+.review-timeline article { position: relative; display: flex; gap: 14px; padding: 0 0 20px 4px; }
+.review-timeline article:not(:last-child)::before { content: ''; position: absolute; top: 16px; bottom: 0; left: 9px; width: 1px; background: #ccddd3; }
+.timeline-dot { position: relative; z-index: 1; width: 12px; height: 12px; margin-top: 5px; flex-shrink: 0; border: 3px solid #d7e8df; border-radius: 50%; background: var(--green); }
+.review-timeline strong, .review-timeline small { display: block; }
+.review-timeline small { color: var(--muted); font-size: 12px; }
+.review-timeline p { margin: 5px 0 0; }
+.loan-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 24px; border-bottom: 1px solid var(--line); }
+.loan-list-heading strong, .loan-list-heading span { display: block; }
+.loan-list-heading strong { font-size: 18px; }
+.loan-list-heading span { color: var(--muted); font-size: 13px; }
 
 @media (min-width: 992px) {
   .app-sidebar.offcanvas-lg { position: fixed; inset: 0 auto 0 0; display: flex; flex-direction: column; width: var(--sidebar-width); height: 100vh; height: 100dvh; background: #fff !important; z-index: 1030; }
@@ -299,6 +353,8 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
   .records-table > thead > tr > th, .records-table > tbody > tr > td { padding-right: 16px; padding-left: 16px; }
 }
 @media (max-width: 991.98px) {
+  .guarantor-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .guarantor-remove { justify-self: start; min-height: 38px; }
   .registration-screen { grid-template-columns: 1fr; }
   .registration-intro { position: relative; min-height: auto; padding: 30px 32px; }
   .registration-intro-copy { max-width: none; margin: 0; padding: 42px 0 14px; }
@@ -316,6 +372,10 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
   .stats-grid { gap: 14px; }
 }
 @media (max-width: 767.98px) {
+  .loan-field-grid, .loan-detail-grid { grid-template-columns: 1fr; }
+  .loan-detail-grid > div:first-child { grid-column: auto; }
+  .guarantor-summary { grid-template-columns: 1fr; }
+  .organization-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .registration-intro { padding: 26px 24px; }
   .registration-intro-copy { padding: 30px 0 2px; }
   .registration-intro h2 { font-size: 32px; }
@@ -376,6 +436,14 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
   .record-button { min-height: 44px; font-size: 14px; padding: 9px 0 9px 9px; }
 }
 @media (max-width: 575.98px) {
+  .loan-form, .loan-detail-body { padding: 2px 20px 22px; }
+  .guarantor-row { grid-template-columns: 1fr; }
+  .form-section-heading, .loan-list-heading { align-items: flex-start; flex-direction: column; }
+  .form-section-heading .btn, .loan-list-heading .btn { width: 100%; }
+  .review-decision-form { padding: 17px; }
+  .organization-form { padding: 2px 20px 22px; }
+  .organization-detail-grid { grid-template-columns: 1fr; }
+  .assignment-controls { align-items: stretch; flex-direction: column; }
   .login-modal-dialog { margin: 12px; }
   .login-modal-header { padding: 18px 20px; }
   .login-modal-brand small { display: none; }
@@ -396,6 +464,8 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
   .topbar { padding: 12px 16px; }
   .topbar-leading { gap: 9px; }
   .topbar-title { max-width: 180px; font-size: 13px; }
+  .topbar-agency-icon { width: 30px; height: 30px; border-radius: 8px; }
+  .topbar-agency-icon .app-icon { font-size: 16px; }
   .preview-badge { font-size: 12px; padding: 4px 7px; gap: 5px; }
   .page-heading { flex-direction: column; gap: 16px; margin-bottom: 18px; }
   .page-heading > .btn { margin: 0; min-height: 44px; font-size: 15px; }
@@ -412,6 +482,11 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
   .stat-value { font-size: 29px; margin: 12px 0 6px; }
   .stat-value span { font-size: 12px; margin-left: 4px; }
   .stat-note { font-size: 11px; }
+  .role-dashboard-heading { align-items: flex-start; padding: 20px; }
+  .role-dashboard-heading h2 { font-size: 21px; }
+  .role-dashboard-heading p { font-size: 14px; }
+  .role-dashboard-mark { width: 44px; height: 44px; border-radius: 12px; }
+  .role-dashboard-mark .app-icon { font-size: 22px; }
   .chart-grid { gap: 16px; margin-bottom: 20px; }
   .chart-container { height: 270px; margin: 0 10px 16px; }
   .chart-heading-icon { width: 36px; height: 36px; border-radius: 10px; }

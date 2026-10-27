@@ -10,7 +10,10 @@
     <p class="nav-caption">พื้นที่ทำงาน</p>
     <nav class="sidebar-nav" aria-label="เมนูหลัก">
       <?php foreach ($pages as $key => $item): ?>
-      <?php if ($key === 'users' && (!$currentUser || !account_is_admin($currentUser))) {
+      <?php if ($key !== 'dashboard' && (!$currentUser || !account_can($currentUser, $item['permission']))) {
+          continue;
+      } ?>
+      <?php if ($key === 'dashboard' && $currentUser && !account_can($currentUser, $item['permission'])) {
           continue;
       } ?>
       <a class="sidebar-link<?= $page === $key ? ' active' : '' ?>" href="index.php?page=<?= e($key) ?>"

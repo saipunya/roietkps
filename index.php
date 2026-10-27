@@ -4,12 +4,12 @@ require_once __DIR__ . '/includes/accounts.php';
 require __DIR__ . '/includes/data.php';
 
 $pages = [
-    'dashboard' => ['title' => 'ภาพรวมกองทุน', 'description' => 'ข้อมูลสำคัญและรายการที่คุณควรติดตาม', 'icon' => 'dashboard'],
-    'registry' => ['title' => 'ทะเบียนสหกรณ์', 'description' => 'ค้นหาข้อมูลสหกรณ์และพื้นที่รับผิดชอบ', 'icon' => 'building'],
-    'loans' => ['title' => 'ทะเบียนเงินกู้', 'description' => 'ติดตามคำขอกู้และผลการพิจารณาในที่เดียว', 'icon' => 'document'],
-    'debt' => ['title' => 'ติดตามหนี้', 'description' => 'ตรวจสอบกำหนดชำระและรายการที่ต้องติดตาม', 'icon' => 'clock'],
-    'reports' => ['title' => 'รายงาน', 'description' => 'เลือกชุดข้อมูลที่ต้องการตรวจสอบหรือส่งออก', 'icon' => 'chart'],
-    'users' => ['title' => 'ผู้ใช้งานและสิทธิ์', 'description' => 'ตรวจคำขอสมัครสมาชิกและกำหนดสิทธิ์เข้าใช้งาน', 'icon' => 'users'],
+    'dashboard' => ['title' => 'ภาพรวมการบริหารกองทุนพัฒนาสหกรณ์', 'description' => 'ข้อมูลสำคัญและรายการที่คุณควรติดตาม', 'icon' => 'dashboard', 'permission' => 'dashboard.view'],
+    'registry' => ['title' => 'ทะเบียนสหกรณ์', 'description' => 'ค้นหาข้อมูลสหกรณ์และพื้นที่รับผิดชอบ', 'icon' => 'building', 'permission' => 'cooperatives.view'],
+    'loans' => ['title' => 'ทะเบียนเงินกู้', 'description' => 'ติดตามคำขอกู้และผลการพิจารณาในที่เดียว', 'icon' => 'document', 'permission' => 'loans.view'],
+    'debt' => ['title' => 'ติดตามหนี้', 'description' => 'ตรวจสอบกำหนดชำระและรายการที่ต้องติดตาม', 'icon' => 'clock', 'permission' => 'debt.view'],
+    'reports' => ['title' => 'รายงาน', 'description' => 'เลือกชุดข้อมูลที่ต้องการตรวจสอบหรือส่งออก', 'icon' => 'chart', 'permission' => 'reports.view'],
+    'users' => ['title' => 'ผู้ใช้งานและสิทธิ์', 'description' => 'ตรวจคำขอสมัครสมาชิกและกำหนดสิทธิ์เข้าใช้งาน', 'icon' => 'users', 'permission' => 'users.manage'],
 ];
 $requestedPage = isset($_GET['page']) && is_string($_GET['page']) ? $_GET['page'] : 'dashboard';
 $page = array_key_exists($requestedPage, $pages) ? $requestedPage : 'dashboard';
@@ -30,14 +30,22 @@ try {
         header('Location: change-password.php', true, 303);
         exit;
     }
-    if ($page === 'users') {
+    if ($page !== 'dashboard') {
         $currentUser = require_account();
-        if (!account_is_admin($currentUser)) {
+        if (!account_can($currentUser, $pages[$page]['permission'])) {
             http_response_code(403);
-            exit('คุณไม่มีสิทธิ์เข้าถึงการจัดการผู้ใช้งาน');
+            exit('คุณไม่มีสิทธิ์เข้าถึงหน้านี้');
         }
+    }
+    if ($page === 'users') {
         header('Cache-Control: no-store');
         require __DIR__ . '/includes/admin-registrations.php';
+    } elseif ($page === 'registry') {
+        header('Cache-Control: no-store');
+        require __DIR__ . '/includes/registry.php';
+    } elseif ($page === 'loans') {
+        header('Cache-Control: no-store');
+        require __DIR__ . '/includes/loans.php';
     }
 } catch (Throwable $exception) {
     error_log('Account page unavailable (code: ' . $exception->getCode() . ')');
@@ -57,6 +65,7 @@ require __DIR__ . '/nav.php';
     <div class="topbar-leading">
       <button class="btn icon-button d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#appSidebar"
         aria-controls="appSidebar" aria-label="เปิดเมนูหลัก"><?= app_icon('menu') ?></button>
+      <span class="topbar-agency-icon" aria-hidden="true"><?= app_icon('building') ?></span>
       <span class="topbar-title">สำนักงานสหกรณ์จังหวัดร้อยเอ็ด</span>
     </div>
     <div class="topbar-actions">
@@ -66,7 +75,8 @@ require __DIR__ . '/nav.php';
           value="<?= e(csrf_token()) ?>"><button class="btn btn-outline-primary login-link"
           type="submit">ออกจากระบบ</button></form>
       <?php else: ?>
-      <a class="btn btn-primary login-link" href="login.php" data-bs-toggle="modal" data-bs-target="#loginModal"><?= app_icon('login') ?><span>เข้าสู่ระบบ</span></a>
+      <a class="btn btn-primary login-link" href="login.php" data-bs-toggle="modal"
+        data-bs-target="#loginModal"><?= app_icon('login') ?><span>เข้าสู่ระบบ</span></a>
       <?php endif; ?>
     </div>
   </header>
@@ -88,6 +98,10 @@ require __DIR__ . '/nav.php';
         require __DIR__ . '/views/dashboard.php';
     } elseif ($page === 'reports') {
         require __DIR__ . '/views/reports.php';
+    } elseif ($page === 'registry') {
+        require __DIR__ . '/views/registry.php';
+    } elseif ($page === 'loans') {
+        require __DIR__ . '/views/loans.php';
     } elseif ($page === 'users') {
         require __DIR__ . '/views/users.php';
     } else {

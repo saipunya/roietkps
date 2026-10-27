@@ -26,7 +26,7 @@
       cooperative.disabled = !needsCooperative;
       cooperative.required = needsCooperative;
       Array.from(cooperative.options).forEach(function (option) {
-        const available = !option.value || option.dataset.province === province.value;
+        const available = !option.value || option.value === 'new' || option.dataset.province === province.value;
         option.hidden = !available;
         option.disabled = !available;
         if (!available && option.selected) cooperative.value = '';
@@ -62,6 +62,24 @@
     if (loginModal.dataset.autoOpen === 'true') {
       bootstrap.Modal.getOrCreateInstance(loginModal).show();
     }
+  }
+
+  const guarantorList = document.getElementById('guarantorList');
+  const guarantorTemplate = document.getElementById('guarantorTemplate');
+  const addGuarantor = document.querySelector('[data-add-guarantor]');
+  if (guarantorList && guarantorTemplate && addGuarantor) {
+    addGuarantor.addEventListener('click', function () {
+      guarantorList.append(guarantorTemplate.content.cloneNode(true));
+      const rows = guarantorList.querySelectorAll('[data-guarantor-row]');
+      const input = rows[rows.length - 1].querySelector('input');
+      if (input) input.focus();
+    });
+    guarantorList.addEventListener('click', function (event) {
+      const remove = event.target.closest('[data-remove-guarantor]');
+      if (!remove) return;
+      const row = remove.closest('[data-guarantor-row]');
+      if (row) row.remove();
+    });
   }
 
   const table = document.getElementById('recordsTable');
