@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $audit->execute([(int) $currentUser['id'], $organizationId, json_encode(['profile_status' => 'complete'], JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
                 tracking_profile_completed($db, $organizationId, (int) $currentUser['id']);
                 $_SESSION['registry_notice'] = 'บันทึกข้อมูลหน่วยงานเรียบร้อยแล้ว';
-                header('Location: index.php?page=registry', true, 303);
+                header('Location: dashboard.php?page=registry', true, 303);
                 exit;
             }
 
@@ -92,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 tracking_officer_assigned($db, (int) $organizationId, (int) $officerId, (int) $currentUser['id']);
                 $db->commit();
                 $_SESSION['registry_notice'] = 'มอบหมายเจ้าหน้าที่ส่งเสริมเรียบร้อยแล้ว';
-                header('Location: index.php?page=registry&view=' . (int) $organizationId, true, 303);
+                header('Location: dashboard.php?page=registry&view=' . (int) $organizationId, true, 303);
                 exit;
             }
         } catch (DomainException $exception) {

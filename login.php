@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $formError = 'มีการเข้าสู่ระบบหลายครั้ง กรุณาลองใหม่ใน 15 นาที';
                 } else {
                     $user = authenticate_account($db, $username, $password);
-                    $destination = (int) $user['must_change_password'] === 1 ? 'change-password.php' : 'index.php';
+                    $destination = (int) $user['must_change_password'] === 1 ? 'change-password.php' : 'dashboard.php';
                     header('Location: ' . $destination, true, 303);
                     exit;
                 }

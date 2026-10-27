@@ -30,11 +30,11 @@ $notificationPriorityLabels = ['normal' => 'ข้อมูลทั่วไป
 <section class="surface notification-section" aria-labelledby="notificationCenterTitle">
   <div class="notification-section-heading">
     <div><h2 id="notificationCenterTitle">การแจ้งเตือน</h2><p>ข่าวสารและเหตุการณ์ที่เกี่ยวข้องกับงานของคุณ</p></div>
-    <?php if ($notificationUnreadCount > 0): ?><form action="index.php?page=notifications" method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="mark_all_notifications"><button class="btn btn-outline-primary btn-sm" type="submit"><?= app_icon('check') ?> อ่านทั้งหมด</button></form><?php endif; ?>
+    <?php if ($notificationUnreadCount > 0): ?><form action="dashboard.php?page=notifications" method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="mark_all_notifications"><button class="btn btn-outline-primary btn-sm" type="submit"><?= app_icon('check') ?> อ่านทั้งหมด</button></form><?php endif; ?>
   </div>
   <nav class="notification-filter" aria-label="กรองการแจ้งเตือน">
-    <a class="<?= $notificationFilter === 'all' ? 'active' : '' ?>" href="index.php?page=notifications">ทั้งหมด</a>
-    <a class="<?= $notificationFilter === 'unread' ? 'active' : '' ?>" href="index.php?page=notifications&amp;status=unread">ยังไม่อ่าน <span><?= e($notificationUnreadCount) ?></span></a>
+    <a class="<?= $notificationFilter === 'all' ? 'active' : '' ?>" href="dashboard.php?page=notifications">ทั้งหมด</a>
+    <a class="<?= $notificationFilter === 'unread' ? 'active' : '' ?>" href="dashboard.php?page=notifications&amp;status=unread">ยังไม่อ่าน <span><?= e($notificationUnreadCount) ?></span></a>
   </nav>
   <?php if (!$notificationRows): ?>
     <div class="empty-state compact-empty-state"><?= app_icon('bell') ?><h2>ไม่มีการแจ้งเตือน</h2><p>ระบบจะแจ้งให้ทราบเมื่อมีงานหรือสถานะเปลี่ยนแปลง</p></div>
@@ -44,7 +44,7 @@ $notificationPriorityLabels = ['normal' => 'ข้อมูลทั่วไป
         <article class="notification-row<?= $notification['read_at'] === null ? ' is-unread' : '' ?>" id="notification-<?= (int) $notification['id'] ?>">
           <span class="notification-row-icon tone-<?= $notification['priority'] === 'urgent' ? 'red' : ($notification['priority'] === 'warning' ? 'amber' : 'green') ?>"><?= app_icon($notification['priority'] === 'urgent' ? 'alert' : 'bell') ?></span>
           <div class="notification-row-copy"><div class="notification-row-title"><strong><?= e($notification['title']) ?></strong><?php if ($notification['read_at'] === null): ?><span class="unread-dot">ใหม่</span><?php endif; ?></div><p><?= e($notification['message']) ?></p><small><?= e($notificationPriorityLabels[$notification['priority']] ?? 'ข้อมูลทั่วไป') ?> · <?= e(notification_time_label($notification['created_at'])) ?></small></div>
-          <form action="index.php?page=notifications" method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="open_notification"><input type="hidden" name="notification_id" value="<?= (int) $notification['id'] ?>"><button class="btn notification-open-button" type="submit">เปิดรายการ <?= app_icon('chevron') ?></button></form>
+          <form action="dashboard.php?page=notifications" method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="open_notification"><input type="hidden" name="notification_id" value="<?= (int) $notification['id'] ?>"><button class="btn notification-open-button" type="submit">เปิดรายการ <?= app_icon('chevron') ?></button></form>
         </article>
       <?php endforeach; ?>
     </div>

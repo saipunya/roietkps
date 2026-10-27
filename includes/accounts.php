@@ -345,7 +345,7 @@ function update_managed_account(PDO $db, int $actorId, int $userId, array $value
         $newValues = ['username' => $username, 'full_name' => $fullName, 'email' => $email === '' ? null : $email, 'role' => $roleCode, 'province_id' => $provinceId, 'cooperative_id' => $cooperativeId];
         $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, new_values, ip_hash) VALUES (?, 'account.update', 'user', ?, ?, ?, ?)");
         $audit->execute([$actorId, $userId, json_encode($oldValues, JSON_UNESCAPED_UNICODE), json_encode($newValues, JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
-        notification_create($db, $userId, 'account', 'ข้อมูลบัญชีได้รับการแก้ไข', 'ผู้ดูแลระบบปรับปรุงข้อมูลหรือสิทธิ์ของบัญชี กรุณาเข้าสู่ระบบใหม่', 'normal', 'index.php?page=dashboard', 'account:update:' . $userId . ':' . time(), 'user', $userId);
+        notification_create($db, $userId, 'account', 'ข้อมูลบัญชีได้รับการแก้ไข', 'ผู้ดูแลระบบปรับปรุงข้อมูลหรือสิทธิ์ของบัญชี กรุณาเข้าสู่ระบบใหม่', 'normal', 'dashboard.php?page=dashboard', 'account:update:' . $userId . ':' . time(), 'user', $userId);
         $db->commit();
     } catch (Throwable $exception) {
         $db->rollBack();
@@ -384,7 +384,7 @@ function set_managed_account_status(PDO $db, int $actorId, int $userId, string $
         $update->execute([$newStatus, $userId]);
         $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, new_values, ip_hash) VALUES (?, ?, 'user', ?, ?, ?, ?)");
         $audit->execute([$actorId, $newStatus === 'suspended' ? 'account.suspend' : 'account.activate', $userId, json_encode(['status' => $account['status']], JSON_UNESCAPED_UNICODE), json_encode(['status' => $newStatus, 'reason' => $reason], JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
-        notification_create($db, $userId, 'account', $newStatus === 'suspended' ? 'บัญชีถูกระงับการใช้งาน' : 'บัญชีกลับมาใช้งานได้แล้ว', $reason, $newStatus === 'suspended' ? 'urgent' : 'normal', 'index.php?page=dashboard', 'account:status:' . $userId . ':' . $newStatus . ':' . time(), 'user', $userId);
+        notification_create($db, $userId, 'account', $newStatus === 'suspended' ? 'บัญชีถูกระงับการใช้งาน' : 'บัญชีกลับมาใช้งานได้แล้ว', $reason, $newStatus === 'suspended' ? 'urgent' : 'normal', 'dashboard.php?page=dashboard', 'account:status:' . $userId . ':' . $newStatus . ':' . time(), 'user', $userId);
         $db->commit();
     } catch (Throwable $exception) {
         $db->rollBack();

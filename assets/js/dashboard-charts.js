@@ -12,7 +12,7 @@
 
   Chart.defaults.font.family = "'Sarabun', sans-serif";
   Chart.defaults.color = '#65746c';
-  Chart.defaults.animation = reducedMotion ? false : { duration: 650 };
+  const chartAnimation = reducedMotion ? false : { duration: 650 };
 
   new Chart(flowCanvas, {
     type: 'bar',
@@ -45,6 +45,7 @@
       ]
     },
     options: {
+      animation: chartAnimation,
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
@@ -99,6 +100,7 @@
     },
     plugins: [centerLabel],
     options: {
+      animation: chartAnimation,
       responsive: true,
       maintainAspectRatio: false,
       cutout: '68%',

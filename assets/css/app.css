@@ -628,3 +628,132 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Public manuals and downloadable documents. */
+.document-upload-panel, .document-library, .dashboard-documents { margin-bottom: 22px; overflow: hidden; }
+.document-heading-icon { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 auto; border-radius: 12px; }
+.document-heading-icon .app-icon { font-size: 22px; }
+.document-upload-form { padding: 2px 24px 24px; }
+.document-upload-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(230px, .8fr); gap: 16px; }
+.document-description-field, .document-file-field { grid-column: 1 / -1; }
+.document-upload-form .form-actions { margin-top: 18px; }
+.document-toolbar { display: flex; align-items: center; gap: 12px; padding: 0 24px 18px; border-bottom: 1px solid var(--line); }
+.document-toolbar .search-field { flex: 1; max-width: none; }
+.document-category-filter { width: min(260px, 32vw); }
+.document-list { padding: 0 24px 8px; }
+.document-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 19px 0; border-top: 1px solid #edf0ee; }
+.document-row:first-child { border-top: 0; }
+.document-row.is-pinned { margin-right: -12px; margin-left: -12px; padding-right: 12px; padding-left: 12px; border-radius: 10px; background: #f7faf8; box-shadow: inset 3px 0 #32775d; }
+.document-file-icon { display: grid; place-items: center; width: 52px; height: 58px; flex: 0 0 auto; border: 1px solid #d7e4dc; border-radius: 11px; color: var(--green); background: #f1f7f4; }
+.document-file-icon .app-icon { font-size: 23px; }
+.document-file-icon small { margin-top: -3px; font-size: 9px; font-weight: 700; letter-spacing: .06em; }
+.document-row-copy { min-width: 0; }
+.document-row-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.document-row-title h3 { margin: 0; font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
+.document-category-badge { display: inline-flex; align-items: center; min-height: 24px; padding: 2px 8px; border-radius: 999px; color: #35604f; background: #eaf3ee; font-size: 11px; font-weight: 600; }
+.document-highlight-badge { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.document-highlight-badge .app-icon { width: 12px; height: 12px; font-size: 12px; }
+.badge-pinned { color: #1e5b43; background: #dff0e7; }
+.badge-new { color: #8a4e12; background: #fff0d4; }
+.document-row-copy > p { margin: 5px 0 0; color: #52665c; font-size: 14px; overflow-wrap: anywhere; }
+.document-meta { display: flex; flex-wrap: wrap; gap: 4px 15px; margin-top: 7px; color: var(--muted); font-size: 12px; }
+.document-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.document-meta .app-icon { width: 13px; height: 13px; font-size: 13px; }
+.document-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.document-actions form { margin: 0; }
+.document-download-button, .document-pin-button { white-space: nowrap; }
+.document-pin-button { color: #50665b; border: 1px solid #d7e3dd; background: #fff; }
+.document-pin-button:hover, .document-pin-button.is-active { color: #1f5e46; border-color: #a9c8b8; background: #eaf4ef; }
+.document-pin-button .app-icon { font-size: 16px; }
+.document-pagination { display: flex; flex-wrap: wrap; gap: 6px; padding: 16px 24px 22px; border-top: 1px solid var(--line); }
+.document-pagination a { display: grid; place-items: center; min-width: 38px; height: 38px; padding: 0 8px; border: 1px solid #d5e1db; border-radius: 8px; color: var(--green); background: #fff; }
+.document-pagination a:hover, .document-pagination a.active { color: #fff; border-color: var(--green); background: var(--green); }
+.dashboard-documents { margin-top: 22px; }
+.dashboard-document-list { padding: 0 24px 8px; }
+.dashboard-document-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 13px; padding: 14px 0; border-top: 1px solid #edf0ee; }
+.dashboard-document-row:first-child { border-top: 0; }
+.dashboard-document-row.is-pinned { margin-right: -10px; margin-left: -10px; padding-right: 10px; padding-left: 10px; border-radius: 9px; background: #f7faf8; box-shadow: inset 3px 0 #32775d; }
+.dashboard-document-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; color: var(--green); background: #edf5f1; }
+.dashboard-document-icon .app-icon { font-size: 18px; }
+.dashboard-document-row h3 { margin: 0; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.dashboard-document-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.dashboard-document-row p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+.document-compact-download { min-height: 38px; padding: 6px 10px; color: var(--green); background: #fff; border: 1px solid #d7e3dd; font-size: 13px; }
+.document-compact-download:hover { color: #fff; background: var(--green); border-color: var(--green); }
+.document-compact-download .app-icon { font-size: 16px; }
+.compact-document-empty { padding-top: 34px; padding-bottom: 38px; }
+
+@media (max-width: 767.98px) {
+  .document-upload-grid { grid-template-columns: 1fr; }
+  .document-description-field, .document-file-field { grid-column: auto; }
+  .document-toolbar { align-items: stretch; flex-direction: column; padding-right: 20px; padding-left: 20px; }
+  .document-category-filter { width: 100%; }
+  .document-toolbar .btn { width: 100%; }
+  .document-list, .dashboard-document-list { padding-right: 20px; padding-left: 20px; }
+  .document-row { grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 13px; }
+  .document-actions { grid-column: 2; justify-content: flex-start; }
+  .dashboard-document-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .document-compact-download span { display: none; }
+  .document-compact-download { width: 40px; min-height: 40px; padding: 8px; }
+}
+
+@media (max-width: 575.98px) {
+  .document-upload-form { padding: 0 16px 20px; }
+  .document-toolbar, .document-list, .dashboard-document-list { padding-right: 16px; padding-left: 16px; }
+  .document-row { grid-template-columns: 1fr; }
+  .document-file-icon { width: 46px; height: 50px; }
+  .document-actions { grid-column: auto; align-items: stretch; flex-direction: column; width: 100%; }
+  .document-actions form, .document-actions .btn { width: 100%; }
+  .document-meta { gap: 3px 10px; }
+  .dashboard-document-row { grid-template-columns: auto minmax(0, 1fr); }
+  .document-compact-download { grid-column: 2; justify-self: start; width: auto; padding: 8px 12px; }
+  .document-compact-download span { display: inline; }
+  .document-pagination { padding-right: 16px; padding-left: 16px; }
+}
+
+/* Private documents attached to loan applications. */
+.loan-document-section .form-section-heading { margin-top: 0; }
+.loan-document-count { display: inline-flex; align-items: center; min-height: 30px; padding: 4px 10px; border-radius: 999px; color: #345f4e; background: #eaf3ee; font-size: 12px; font-weight: 600; }
+.loan-document-upload-form { margin: 14px 0 20px; padding: 18px; border: 1px solid #dbe7e0; border-radius: 12px; background: #f8fbf9; }
+.loan-document-upload-grid { display: grid; grid-template-columns: minmax(190px, .8fr) minmax(260px, 1.2fr); gap: 14px; }
+.loan-document-file-field { grid-column: 1 / -1; }
+.loan-document-replacement-field { margin-bottom: 14px; }
+.loan-document-upload-form .form-actions { margin-top: 16px; }
+.loan-document-list { display: grid; gap: 10px; margin-top: 14px; }
+.loan-document-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 14px; padding: 17px; border: 1px solid #e0e8e3; border-radius: 11px; background: #fff; }
+.loan-document-row.is-previous { background: #f8f9f8; opacity: .78; }
+.loan-document-file-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 10px; color: var(--green); background: #edf5f1; }
+.loan-document-file-icon .app-icon { font-size: 20px; }
+.loan-document-copy { min-width: 0; }
+.loan-document-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.loan-document-title h4 { margin: 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.loan-document-copy > p { margin: 5px 0 0; color: #53675d; font-size: 13px; overflow-wrap: anywhere; }
+.loan-document-copy > small { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.loan-document-actions { display: flex; gap: 8px; }
+.loan-document-actions .btn { min-height: 38px; padding: 6px 10px; font-size: 13px; white-space: nowrap; }
+.loan-document-review-note { margin-top: 10px; padding: 10px 12px; border-left: 3px solid #bd675f; border-radius: 7px; background: #fff4f2; }
+.loan-document-review-note strong, .loan-document-review-note small { display: block; }
+.loan-document-review-note strong { color: #8e413c; font-size: 12px; }
+.loan-document-review-note p { margin: 3px 0; font-size: 13px; }
+.loan-document-review-note small { color: #7a6c68; font-size: 11px; }
+.loan-document-review-form { grid-column: 2 / -1; margin-top: 3px; padding: 14px; border: 1px solid #dce7e1; border-radius: 9px; background: #f8fbf9; }
+.loan-document-review-form .form-actions { margin-top: 11px; }
+.loan-document-empty { display: flex; align-items: center; gap: 9px; margin-top: 12px; padding: 20px; border: 1px dashed #cfddd5; border-radius: 10px; color: var(--muted); background: #fafcfb; }
+.loan-document-empty p { margin: 0; }
+
+@media (max-width: 767.98px) {
+  .loan-document-upload-grid { grid-template-columns: 1fr; }
+  .loan-document-file-field { grid-column: auto; }
+  .loan-document-row { grid-template-columns: auto minmax(0, 1fr); }
+  .loan-document-actions { grid-column: 2; justify-content: flex-start; }
+  .loan-document-review-form { grid-column: 1 / -1; }
+}
+
+@media (max-width: 575.98px) {
+  .loan-document-upload-form { padding: 15px; }
+  .loan-document-row { grid-template-columns: 1fr; padding: 15px; }
+  .loan-document-actions, .loan-document-review-form { grid-column: auto; }
+  .loan-document-actions, .loan-document-actions .btn { width: 100%; }
+  .loan-document-review-form .form-actions { align-items: stretch; flex-direction: column; }
+  .loan-document-review-form .btn { width: 100%; }
+}

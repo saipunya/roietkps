@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/loan-documents.php';
+
 $loanError = '';
 $loanNotice = isset($_SESSION['loan_notice']) ? (string) $_SESSION['loan_notice'] : '';
 unset($_SESSION['loan_notice']);
@@ -42,6 +44,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         try {
             $operation = post_text('operation');
+            if ($operation === 'upload_loan_document') {
+                $applicationId = filter_var(post_text('application_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+                loan_document_store($db, $currentUser, $applicationId, [
+                    'document_type' => post_text('document_type'),
+                    'title' => post_text('document_title'),
+                    'replaces_document_id' => post_text('replaces_document_id'),
+                ], isset($_FILES['loan_document_file']) && is_array($_FILES['loan_document_file']) ? $_FILES['loan_document_file'] : []);
+                $_SESSION['loan_notice'] = 'อัปโหลดเอกสารและแจ้งเจ้าหน้าที่ผู้รับผิดชอบแล้ว';
+                header('Location: dashboard.php?page=loans&view=' . $applicationId, true, 303);
+                exit;
+            }
+
+            if ($operation === 'review_loan_document') {
+                $applicationId = filter_var(post_text('application_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+                $documentId = filter_var(post_text('document_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+                $decision = post_text('document_decision');
+                loan_document_review($db, $currentUser, $applicationId, $documentId, $decision, post_text('document_review_note'));
+                $_SESSION['loan_notice'] = $decision === 'verified' ? 'บันทึกว่าเอกสารผ่านการตรวจแล้ว' : 'ส่งเอกสารกลับให้หน่วยงานแก้ไขแล้ว';
+                header('Location: dashboard.php?page=loans&view=' . $applicationId, true, 303);
+                exit;
+            }
+
             if ($operation === 'save_application') {
                 if ($currentUser['role_code'] !== 'cooperative_user' || !account_can($currentUser, 'loan_applications.create')) {
                     throw new DomainException('คุณไม่มีสิทธิ์สร้างคำขอกู้');
@@ -102,7 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $audit->execute([(int) $currentUser['id'], $applicationId, json_encode(['requested_amount' => $requestedAmount, 'term_months' => (int) $termMonths], JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
                 $db->commit();
                 $_SESSION['loan_notice'] = 'บันทึกคำขอกู้ฉบับร่างแล้ว';
-                header('Location: index.php?page=loans&view=' . $applicationId, true, 303);
+                header('Location: dashboard.php?page=loans&view=' . $applicationId, true, 303);
                 exit;
             }
 
@@ -118,6 +142,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$oldStatus) {
                     throw new DomainException('รายการนี้ไม่สามารถส่งตรวจได้');
                 }
+                $documents = $db->prepare("SELECT COUNT(*) AS total, COALESCE(SUM(d.status = 'needs_revision'), 0) AS needs_revision FROM loan_documents d WHERE d.loan_application_id = ? AND NOT EXISTS (SELECT 1 FROM loan_documents newer WHERE newer.replaces_document_id = d.id)");
+                $documents->execute([$applicationId]);
+                $documentSummary = $documents->fetch();
+                if ((int) $documentSummary['total'] < 1) {
+                    throw new DomainException('กรุณาอัปโหลดเอกสารประกอบคำขอกู้อย่างน้อย 1 ฉบับก่อนส่งตรวจ');
+                }
+                if ((int) $documentSummary['needs_revision'] > 0) {
+                    throw new DomainException('กรุณาอัปโหลดเอกสารฉบับแก้ไขให้ครบก่อนส่งตรวจอีกครั้ง');
+                }
                 $query = $db->prepare("SELECT officer_user_id FROM organization_officer_assignments WHERE cooperative_id = ? AND is_primary = 1 AND (ends_on IS NULL OR ends_on >= CURRENT_DATE()) ORDER BY starts_on DESC LIMIT 1");
                 $query->execute([$currentUser['cooperative_id']]);
                 $officer = $query->fetchColumn() ?: null;
@@ -128,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 tracking_loan_submitted($db, $applicationId, (int) $currentUser['id']);
                 $db->commit();
                 $_SESSION['loan_notice'] = $officer ? 'ส่งคำขอให้เจ้าหน้าที่ส่งเสริมตรวจสอบแล้ว' : 'ส่งคำขอแล้ว ขณะนี้รอจังหวัดมอบหมายเจ้าหน้าที่ส่งเสริม';
-                header('Location: index.php?page=loans&view=' . $applicationId, true, 303);
+                header('Location: dashboard.php?page=loans&view=' . $applicationId, true, 303);
                 exit;
             }
 
@@ -150,12 +183,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$application) {
                     throw new DomainException('รายการนี้ไม่อยู่ในขั้นตอนที่คุณตรวจสอบได้');
                 }
+                if ($decision === 'forward') {
+                    $documents = $db->prepare("SELECT COUNT(*) AS total, COALESCE(SUM(d.status = 'verified'), 0) AS verified FROM loan_documents d WHERE d.loan_application_id = ? AND NOT EXISTS (SELECT 1 FROM loan_documents newer WHERE newer.replaces_document_id = d.id)");
+                    $documents->execute([$applicationId]);
+                    $documentSummary = $documents->fetch();
+                    if ((int) $documentSummary['total'] < 1 || (int) $documentSummary['verified'] !== (int) $documentSummary['total']) {
+                        throw new DomainException('กรุณาตรวจเอกสารฉบับปัจจุบันทุกฉบับให้ผ่านก่อนส่งให้จังหวัด');
+                    }
+                }
                 $db->prepare('UPDATE loan_applications SET status = ?, promotion_reviewed_at = UTC_TIMESTAMP(), row_version = row_version + 1 WHERE id = ?')->execute([$toStatus, $applicationId]);
                 $db->prepare("INSERT INTO loan_reviews (loan_application_id, review_round, review_stage, decision, from_status, to_status, comment, reviewed_by) VALUES (?, ?, 'promotion', ?, ?, ?, ?, ?)")->execute([$applicationId, $application['review_round'], $decision, $application['status'], $toStatus, $comment, $currentUser['id']]);
                 tracking_promotion_reviewed($db, $applicationId, (int) $currentUser['id'], $decision, $comment);
                 $db->commit();
                 $_SESSION['loan_notice'] = $decision === 'forward' ? 'ส่งคำขอให้เจ้าหน้าที่จังหวัดตรวจสอบแล้ว' : 'ส่งรายการกลับให้หน่วยงานแก้ไขแล้ว';
-                header('Location: index.php?page=loans&view=' . $applicationId, true, 303);
+                header('Location: dashboard.php?page=loans&view=' . $applicationId, true, 303);
                 exit;
             }
 
@@ -193,7 +234,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 tracking_province_reviewed($db, $applicationId, (int) $currentUser['id'], $decision, $comment);
                 $db->commit();
                 $_SESSION['loan_notice'] = $decision === 'approve' ? 'อนุมัติคำขอแล้ว ระบบสร้างรายการรอจัดทำสัญญาเรียบร้อย' : ($decision === 'reject' ? 'บันทึกการไม่อนุมัติแล้ว' : 'ส่งรายการกลับให้แก้ไขแล้ว');
-                header('Location: index.php?page=loans&view=' . $applicationId, true, 303);
+                header('Location: dashboard.php?page=loans&view=' . $applicationId, true, 303);
                 exit;
             }
         } catch (DomainException $exception) {
@@ -228,6 +269,7 @@ foreach ($loanRows as $row) {
 }
 $loanGuarantors = [];
 $loanReviews = [];
+$loanDocuments = [];
 if ($selectedLoan) {
     $query = $db->prepare('SELECT * FROM loan_guarantors WHERE loan_application_id = ? ORDER BY id');
     $query->execute([$selectedLoan['id']]);
@@ -235,6 +277,9 @@ if ($selectedLoan) {
     $query = $db->prepare('SELECT r.*, u.full_name AS reviewer_name FROM loan_reviews r JOIN users u ON u.id = r.reviewed_by WHERE r.loan_application_id = ? ORDER BY r.created_at, r.id');
     $query->execute([$selectedLoan['id']]);
     $loanReviews = $query->fetchAll();
+    $query = $db->prepare('SELECT d.*, uploader.full_name AS uploader_name, reviewer.full_name AS reviewer_name, EXISTS (SELECT 1 FROM loan_documents newer WHERE newer.replaces_document_id = d.id) AS has_newer FROM loan_documents d JOIN users uploader ON uploader.id = d.uploaded_by LEFT JOIN users reviewer ON reviewer.id = d.reviewed_by WHERE d.loan_application_id = ? ORDER BY d.created_at DESC, d.id DESC');
+    $query->execute([$selectedLoan['id']]);
+    $loanDocuments = $query->fetchAll();
 }
 
 $cooperativeProfileComplete = false;

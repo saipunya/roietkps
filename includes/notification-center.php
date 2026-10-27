@@ -18,7 +18,7 @@ if (!notification_schema_ready($db)) {
                 $query = $db->prepare('UPDATE notifications SET read_at = UTC_TIMESTAMP() WHERE user_id = ? AND read_at IS NULL');
                 $query->execute([(int) $currentUser['id']]);
                 $_SESSION['notification_notice'] = 'ทำเครื่องหมายว่าอ่านการแจ้งเตือนทั้งหมดแล้ว';
-                header('Location: index.php?page=notifications', true, 303);
+                header('Location: dashboard.php?page=notifications', true, 303);
                 exit;
             }
             if ($operation === 'open_notification') {

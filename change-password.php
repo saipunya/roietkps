@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 session_regenerate_id(true);
                 $_SESSION['auth_version'] = (int) $currentUser['auth_version'] + 1;
                 $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-                header('Location: ' . ($currentUser['role_code'] === 'system_admin' ? 'index.php?page=users' : 'index.php'), true, 303);
+                header('Location: ' . ($currentUser['role_code'] === 'system_admin' ? 'dashboard.php?page=users' : 'dashboard.php'), true, 303);
                 exit;
             } catch (DomainException $exception) {
                 $formError = $exception->getMessage();

@@ -1,11 +1,4 @@
 <?php
-if ($currentUser) {
-    require_once __DIR__ . '/../includes/dashboard-data.php';
-    $roleDashboard = load_role_dashboard(app_db(), $currentUser);
-    require __DIR__ . '/dashboard-role.php';
-    return;
-}
-
 $summary = $dashboardData['summary'];
 $pending = array_sum($dashboardData['request_status']['values']) - $summary['approved_requests'];
 $overdue = $summary['overdue'];
@@ -28,6 +21,7 @@ $stats = [
     </article>
   <?php endforeach; ?>
 </section>
+<?php require __DIR__ . '/dashboard-documents.php'; ?>
 
 <section class="chart-grid" aria-label="กราฟสรุปข้อมูลกองทุน">
   <article class="surface chart-card chart-card-wide">
@@ -45,21 +39,21 @@ $stats = [
   <section class="surface">
     <div class="surface-heading"><div><h2>งานที่ต้องติดตาม</h2><p>เริ่มจากรายการที่ต้องดำเนินการก่อน</p></div><span class="subtle-icon"><?= app_icon('clock') ?></span></div>
     <div class="task-list">
-      <a class="task-item" href="index.php?page=debt&amp;status=<?= e(rawurlencode('ค้างชำระ')) ?>"><span class="task-icon tone-red"><?= app_icon('alert') ?></span><span class="task-copy"><strong>บัญชีค้างชำระ</strong><small>ตรวจสอบและบันทึกผลการติดตาม</small></span><span class="task-count"><?= e($overdue) ?><small>บัญชี</small></span><?= app_icon('chevron') ?></a>
-      <a class="task-item" href="index.php?page=debt&amp;status=<?= e(rawurlencode('ใกล้ครบกำหนด')) ?>"><span class="task-icon tone-amber"><?= app_icon('clock') ?></span><span class="task-copy"><strong>ใกล้ครบกำหนดใน 30 วัน</strong><small>เตรียมติดตามการชำระเงิน</small></span><span class="task-count"><?= e($dueSoon) ?><small>บัญชี</small></span><?= app_icon('chevron') ?></a>
-      <a class="task-item" href="index.php?page=loans&amp;status=<?= e(rawurlencode('รอเอกสาร')) ?>"><span class="task-icon tone-blue"><?= app_icon('document') ?></span><span class="task-copy"><strong>คำขอที่รอเอกสาร</strong><small>ตรวจสอบเอกสารประกอบคำขอ</small></span><span class="task-count"><?= e($waitingDocuments) ?><small>คำขอ</small></span><?= app_icon('chevron') ?></a>
+      <a class="task-item" href="dashboard.php?page=debt&amp;status=<?= e(rawurlencode('ค้างชำระ')) ?>"><span class="task-icon tone-red"><?= app_icon('alert') ?></span><span class="task-copy"><strong>บัญชีค้างชำระ</strong><small>ตรวจสอบและบันทึกผลการติดตาม</small></span><span class="task-count"><?= e($overdue) ?><small>บัญชี</small></span><?= app_icon('chevron') ?></a>
+      <a class="task-item" href="dashboard.php?page=debt&amp;status=<?= e(rawurlencode('ใกล้ครบกำหนด')) ?>"><span class="task-icon tone-amber"><?= app_icon('clock') ?></span><span class="task-copy"><strong>ใกล้ครบกำหนดใน 30 วัน</strong><small>เตรียมติดตามการชำระเงิน</small></span><span class="task-count"><?= e($dueSoon) ?><small>บัญชี</small></span><?= app_icon('chevron') ?></a>
+      <a class="task-item" href="dashboard.php?page=loans&amp;status=<?= e(rawurlencode('รอเอกสาร')) ?>"><span class="task-icon tone-blue"><?= app_icon('document') ?></span><span class="task-copy"><strong>คำขอที่รอเอกสาร</strong><small>ตรวจสอบเอกสารประกอบคำขอ</small></span><span class="task-count"><?= e($waitingDocuments) ?><small>คำขอ</small></span><?= app_icon('chevron') ?></a>
     </div>
   </section>
   <section class="surface quick-panel">
     <div class="surface-heading"><div><h2>เข้าถึงงานหลัก</h2><p>เลือกงานที่คุณต้องการทำ</p></div></div>
-    <a class="quick-link" href="index.php?page=registry"><span class="quick-icon"><?= app_icon('building') ?></span><span><strong>ค้นหาสหกรณ์</strong><small>ข้อมูลพื้นฐานและสถานะ</small></span><?= app_icon('arrow') ?></a>
-    <a class="quick-link" href="index.php?page=loans"><span class="quick-icon"><?= app_icon('document') ?></span><span><strong>ตรวจสอบคำขอกู้</strong><small>รอดำเนินการ <?= e($pending) ?> คำขอ</small></span><?= app_icon('arrow') ?></a>
-    <a class="quick-link" href="index.php?page=reports"><span class="quick-icon"><?= app_icon('chart') ?></span><span><strong>ดูรายงาน</strong><small>ตรวจสอบและส่งออกข้อมูล</small></span><?= app_icon('arrow') ?></a>
+    <a class="quick-link" href="dashboard.php?page=registry"><span class="quick-icon"><?= app_icon('building') ?></span><span><strong>ค้นหาสหกรณ์</strong><small>ข้อมูลพื้นฐานและสถานะ</small></span><?= app_icon('arrow') ?></a>
+    <a class="quick-link" href="dashboard.php?page=loans"><span class="quick-icon"><?= app_icon('document') ?></span><span><strong>ตรวจสอบคำขอกู้</strong><small>รอดำเนินการ <?= e($pending) ?> คำขอ</small></span><?= app_icon('arrow') ?></a>
+    <a class="quick-link" href="dashboard.php?page=reports"><span class="quick-icon"><?= app_icon('chart') ?></span><span><strong>ดูรายงาน</strong><small>ตรวจสอบและส่งออกข้อมูล</small></span><?= app_icon('arrow') ?></a>
   </section>
 </div>
 
 <section class="surface recent-section">
-  <div class="surface-heading"><div><h2>คำขอเงินกู้ล่าสุด</h2><p>รายการคำขอที่บันทึกล่าสุด</p></div><a class="text-link" href="index.php?page=loans">ดูทั้งหมด <?= app_icon('arrow') ?></a></div>
+  <div class="surface-heading"><div><h2>คำขอเงินกู้ล่าสุด</h2><p>รายการคำขอที่บันทึกล่าสุด</p></div><a class="text-link" href="dashboard.php?page=loans">ดูทั้งหมด <?= app_icon('arrow') ?></a></div>
   <div class="records-wrap">
     <table class="table records-table mb-0">
       <caption class="visually-hidden">คำขอเงินกู้ล่าสุด</caption>

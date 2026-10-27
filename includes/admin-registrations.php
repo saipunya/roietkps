@@ -1,5 +1,5 @@
 <?php
-// Included by index.php only after require_account() and account_is_admin().
+// Included by dashboard.php only after require_account() and the users.manage permission check.
 if (!isset($currentUser) || !account_is_admin($currentUser)) {
     http_response_code(403);
     exit;
@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $createOrganization = $cooperative === 'new';
                 review_registration($db, (int) $currentUser['id'], (int) $userId, post_text('decision'), post_text('role_code'), $province === '' ? null : (int) $province, $createOrganization || $cooperative === '' ? null : (int) $cooperative, $createOrganization, post_text('review_note'));
                 $_SESSION['approval_notice'] = post_text('decision') === 'approve' ? 'อนุมัติบัญชีแล้ว ผู้สมัครเข้าสู่ระบบได้ทันที' : 'บันทึกการไม่อนุมัติแล้ว';
-                header('Location: index.php?page=users', true, 303);
+                header('Location: dashboard.php?page=users', true, 303);
                 exit;
             }
             if ($operation === 'update_account') {
@@ -36,14 +36,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
                 $returnStatus = in_array(post_text('return_status'), ['active', 'suspended'], true) ? post_text('return_status') : 'active';
                 $_SESSION['approval_notice'] = 'บันทึกข้อมูลและสิทธิ์ของผู้ใช้งานแล้ว';
-                header('Location: index.php?page=users&status=' . rawurlencode($returnStatus), true, 303);
+                header('Location: dashboard.php?page=users&status=' . rawurlencode($returnStatus), true, 303);
                 exit;
             }
             if ($operation === 'set_account_status') {
                 $newStatus = post_text('new_status');
                 set_managed_account_status($db, (int) $currentUser['id'], (int) $userId, $newStatus, post_text('status_reason'));
                 $_SESSION['approval_notice'] = $newStatus === 'suspended' ? 'ระงับบัญชีและยุติ session ที่ใช้งานอยู่แล้ว' : 'เปิดใช้งานบัญชีเรียบร้อยแล้ว';
-                header('Location: index.php?page=users&status=' . rawurlencode($newStatus), true, 303);
+                header('Location: dashboard.php?page=users&status=' . rawurlencode($newStatus), true, 303);
                 exit;
             }
             throw new DomainException('รายการดำเนินการไม่ถูกต้อง');

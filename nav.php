@@ -1,6 +1,6 @@
 <aside class="app-sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="appSidebar" aria-labelledby="sidebarTitle">
   <div class="sidebar-brand">
-    <a class="brand-link" href="index.php" aria-label="RoietKPS หน้าภาพรวม"><span
+    <a class="brand-link" href="<?= !empty($isWorkspace) ? 'dashboard.php' : 'index.php' ?>" aria-label="RoietKPS <?= !empty($isWorkspace) ? 'แดชบอร์ด' : 'หน้าแรก' ?>"><span
         class="brand-mark"><?= app_icon('building') ?></span><span><strong
           id="sidebarTitle">RoietKPS</strong><small>ระบบสารสนเทศ กพส.</small></span></a>
     <button class="btn-close d-lg-none" type="button" data-bs-dismiss="offcanvas" data-bs-target="#appSidebar"
@@ -13,18 +13,17 @@
       <?php if (!empty($item['hidden'])) {
           continue;
       } ?>
-      <?php if ($key !== 'dashboard' && (!$currentUser || !account_can($currentUser, $item['permission']))) {
+      <?php if (!empty($isWorkspace) && $item['permission'] !== null && !account_can($currentUser, $item['permission'])) {
           continue;
       } ?>
-      <?php if ($key === 'dashboard' && $currentUser && !account_can($currentUser, $item['permission'])) {
-          continue;
-      } ?>
-      <a class="sidebar-link<?= $page === $key ? ' active' : '' ?>" href="index.php?page=<?= e($key) ?>"
-        <?= $page === $key ? ' aria-current="page"' : '' ?>><?= app_icon($item['icon']) ?><span><?= e($key === 'dashboard' ? 'ภาพรวม' : $item['title']) ?></span></a>
+      <?php $navigationUrl = (!empty($isWorkspace) ? 'dashboard.php' : 'index.php') . ($key === 'dashboard' ? '' : '?page=' . rawurlencode($key)); ?>
+      <a class="sidebar-link<?= $page === $key ? ' active' : '' ?>" href="<?= e($navigationUrl) ?>"
+        <?= $page === $key ? ' aria-current="page"' : '' ?>><?= app_icon($item['icon']) ?><span><?= e($key === 'dashboard' ? (!empty($isWorkspace) ? 'แดชบอร์ด' : 'หน้าแรก') : $item['title']) ?></span></a>
       <?php endforeach; ?>
     </nav>
-    <?php if (!$currentUser): ?><a class="sidebar-link mt-3"
-      href="register.php"><?= app_icon('user') ?><span>สมัครสมาชิก</span></a><?php endif; ?>
+    <?php if (!empty($isWorkspace)): ?><a class="sidebar-link mt-3" href="index.php"><?= app_icon('building') ?><span>หน้าเว็บไซต์</span></a>
+    <?php elseif ($currentUser): ?><a class="sidebar-link mt-3" href="dashboard.php"><?= app_icon('dashboard') ?><span>เข้าสู่ Dashboard</span></a>
+    <?php else: ?><a class="sidebar-link mt-3" href="register.php"><?= app_icon('user') ?><span>สมัครสมาชิก</span></a><?php endif; ?>
     <div class="sidebar-note"><span class="sidebar-note-icon"><?= app_icon('leaf') ?></span>
       <p>ข้อมูลเป็นระบบ<br><strong>ติดตามงานได้ง่ายขึ้น</strong></p>
     </div>

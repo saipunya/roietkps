@@ -7,6 +7,9 @@
 3. `003_core_workflow.sql` — ข้อมูลหน่วยงาน เจ้าหน้าที่รับผิดชอบ คำขอกู้ เอกสาร การตรวจสอบ สัญญา การชำระ และประวัติการดำเนินการ
 4. `004_provincial_office_registration.sql` — เพิ่มสำนักงานสหกรณ์จังหวัดร้อยเอ็ดในประเภทหน่วยงานของแบบฟอร์มสมัคร
 5. `005_tracking_notifications.sql` — งานตามกระบวนการ กำหนดเวลา และศูนย์แจ้งเตือนภายในระบบ
+6. `006_public_documents.sql` — คู่มือและเอกสารเผยแพร่สำหรับดาวน์โหลด
+7. `007_public_document_pinning.sql` — การปักหมุดเอกสารสำคัญ
+8. `008_loan_document_workflow.sql` — การส่ง แก้ไข และตรวจเอกสารประกอบคำขอกู้
 
 ## บทบาท
 
@@ -44,12 +47,14 @@
 | `loan_applications` | คำขอกู้และสถานะการตรวจสอบ |
 | `loan_guarantors` | ผู้ค้ำหลายคนต่อคำขอ |
 | `organization_documents`, `loan_documents` | เอกสารระดับหน่วยงานและระดับคำขอ |
+| `loan_document_reviews` | ประวัติผลการตรวจเอกสารประกอบคำขอแต่ละฉบับ |
 | `loan_reviews` | ความเห็นและผลการตรวจแต่ละรอบ |
 | `loan_contracts` | สัญญาที่สร้างจากคำขออนุมัติ |
 | `repayment_schedules`, `repayments` | ตารางชำระและรายการรับชำระ |
 | `audit_logs` | ประวัติการเปลี่ยนแปลงข้อมูลสำคัญ |
 | `workflow_tasks`, `notification_rules` | งาน ผู้รับผิดชอบ กำหนดเวลา และกติกาการติดตาม |
 | `notifications`, `notification_deliveries` | การแจ้งเตือนและสถานะการส่งแต่ละช่องทาง |
+| `public_documents` | คู่มือ แบบฟอร์ม และเอกสารเผยแพร่สำหรับดาวน์โหลด |
 
 ## การนำเข้า
 
@@ -59,6 +64,9 @@ mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/003_core_workflow.sql
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/004_provincial_office_registration.sql
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/005_tracking_notifications.sql
+mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/006_public_documents.sql
+mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/007_public_document_pinning.sql
+mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/008_loan_document_workflow.sql
 ```
 
 ฐานข้อมูลบนโฮสต์ปัจจุบันนำเข้าถึง `003_core_workflow.sql` แล้ว ตรวจสอบได้ด้วย:

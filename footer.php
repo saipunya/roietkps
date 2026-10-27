@@ -18,11 +18,11 @@
 <?php endif; ?>
 <div id="appMessage" class="visually-hidden" role="status" aria-live="polite"></div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
-<?php if (!empty($isDashboard)): ?>
+<?php if (!empty($hasPublicCharts)): ?>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
-<script src="assets/js/dashboard-charts.js?v=1"></script>
+<script src="assets/js/dashboard-charts.js?v=2"></script>
 <?php endif; ?>
-<script src="assets/js/app.js?v=7"></script>
+<script src="assets/js/app.js?v=8"></script>
 </body>
 
 </html>

@@ -13,12 +13,12 @@
     $managedCooperative = $editingPost ? post_text('cooperative_id') : (string) ($managedAccount['cooperative_id'] ?? '');
 ?>
 <section class="surface review-panel account-management-panel mb-4" aria-labelledby="manageAccountTitle">
-  <div class="surface-heading"><div><h2 id="manageAccountTitle">จัดการบัญชีผู้ใช้งาน</h2><p><?= e($managedAccount['full_name']) ?> · <?= e($managedAccount['role_name']) ?></p></div><a class="text-link" href="index.php?page=users&amp;status=<?= e($managedAccount['status']) ?>">ปิด</a></div>
+  <div class="surface-heading"><div><h2 id="manageAccountTitle">จัดการบัญชีผู้ใช้งาน</h2><p><?= e($managedAccount['full_name']) ?> · <?= e($managedAccount['role_name']) ?></p></div><a class="text-link" href="dashboard.php?page=users&amp;status=<?= e($managedAccount['status']) ?>">ปิด</a></div>
   <div class="review-body">
     <?php if ($managementProtected): ?>
       <div class="alert alert-info mb-0" role="status">บัญชีผู้ดูแลระบบและบัญชีของคุณได้รับการป้องกัน ไม่สามารถแก้ไขหรือระงับจากเมนูนี้ได้</div>
     <?php else: ?>
-    <form action="index.php?page=users" method="post" id="managedAccountForm">
+    <form action="dashboard.php?page=users" method="post" id="managedAccountForm">
       <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="update_account"><input type="hidden" name="user_id" value="<?= (int) $managedAccount['id'] ?>"><input type="hidden" name="return_status" value="<?= e($managedAccount['status']) ?>">
       <div class="row g-3">
         <div class="col-md-6"><label class="form-label" for="managedFullName">ชื่อ–นามสกุล</label><input class="form-control" id="managedFullName" name="full_name" maxlength="150" value="<?= e($managedFullName) ?>" required></div>
@@ -32,7 +32,7 @@
     </form>
     <section class="account-status-management" id="accountStatus" aria-labelledby="accountStatusTitle">
       <div><h3 id="accountStatusTitle"><?= $managedAccount['status'] === 'active' ? 'ระงับบัญชีผู้ใช้งาน' : 'เปิดใช้งานบัญชีอีกครั้ง' ?></h3><p><?= $managedAccount['status'] === 'active' ? 'ผู้ใช้งานจะออกจากระบบทันทีและไม่สามารถเข้าสู่ระบบได้' : 'ผู้ใช้งานจะสามารถเข้าสู่ระบบด้วยรหัสผ่านเดิมได้อีกครั้ง' ?></p></div>
-      <form action="index.php?page=users" method="post" data-confirm="<?= $managedAccount['status'] === 'active' ? 'ยืนยันการระงับบัญชีผู้ใช้งานนี้?' : 'ยืนยันการเปิดใช้งานบัญชีนี้อีกครั้ง?' ?>">
+      <form action="dashboard.php?page=users" method="post" data-confirm="<?= $managedAccount['status'] === 'active' ? 'ยืนยันการระงับบัญชีผู้ใช้งานนี้?' : 'ยืนยันการเปิดใช้งานบัญชีนี้อีกครั้ง?' ?>">
         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="set_account_status"><input type="hidden" name="user_id" value="<?= (int) $managedAccount['id'] ?>"><input type="hidden" name="new_status" value="<?= $managedAccount['status'] === 'active' ? 'suspended' : 'active' ?>">
         <label class="form-label" for="statusReason">เหตุผล / หมายเหตุ</label><textarea class="form-control" id="statusReason" name="status_reason" rows="3" minlength="3" maxlength="500" required><?= e($_SERVER['REQUEST_METHOD'] === 'POST' && post_text('operation') === 'set_account_status' ? post_text('status_reason') : '') ?></textarea>
         <button class="btn <?= $managedAccount['status'] === 'active' ? 'btn-outline-danger' : 'btn-primary' ?> mt-3" type="submit"><?= app_icon($managedAccount['status'] === 'active' ? 'ban' : 'check') ?> <?= $managedAccount['status'] === 'active' ? 'ระงับบัญชี' : 'เปิดใช้งานบัญชี' ?></button>
@@ -49,10 +49,10 @@
     $selectedCooperative = $_SERVER['REQUEST_METHOD'] === 'POST' ? post_text('cooperative_id') : $defaultApprovalCooperative;
 ?>
 <section class="surface review-panel mb-4" aria-labelledby="reviewTitle">
-  <div class="surface-heading"><div><h2 id="reviewTitle">พิจารณาคำขอสมัครสมาชิก</h2><p><?= e($reviewRequest['full_name']) ?> · <?= e($reviewRequest['username']) ?></p></div><a class="text-link" href="index.php?page=users">ปิด</a></div>
+  <div class="surface-heading"><div><h2 id="reviewTitle">พิจารณาคำขอสมัครสมาชิก</h2><p><?= e($reviewRequest['full_name']) ?> · <?= e($reviewRequest['username']) ?></p></div><a class="text-link" href="dashboard.php?page=users">ปิด</a></div>
   <div class="review-body">
     <p><strong>หน่วยงาน:</strong> <?= e($reviewRequest['organization']) ?><br><strong>ประเภทหน่วยงาน:</strong> <?= e(organization_type_labels()[$reviewRequest['organization_type']] ?? $reviewRequest['organization_type']) ?><br><strong>อีเมล:</strong> <?= e($reviewRequest['email']) ?><br><strong>ประเภทบัญชี:</strong> <?= e(request_roles()[$reviewRequest['requested_role']]) ?></p>
-    <form action="index.php?page=users" method="post" id="approvalForm">
+    <form action="dashboard.php?page=users" method="post" id="approvalForm">
       <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="review_registration"><input type="hidden" name="user_id" value="<?= (int) $reviewRequest['id'] ?>">
       <div class="row g-3">
         <div class="col-12"><label class="form-label" for="approvalRole">บทบาทที่อนุมัติ</label><select class="form-select" name="role_code" id="approvalRole" required><?php foreach (assignable_roles() as $code => $name): ?><option value="<?= e($code) ?>"<?= $selectedRole === $code ? ' selected' : '' ?>><?= e($name) ?></option><?php endforeach; ?></select></div>
@@ -67,7 +67,7 @@
 <?php endif; ?>
 
 <section class="surface records-section" aria-label="รายการผู้ใช้งาน">
-  <form class="records-toolbar" action="index.php" method="get"><input type="hidden" name="page" value="users"><div class="search-field"><label class="visually-hidden" for="userSearch">ค้นหาผู้ใช้งาน</label><?= app_icon('search') ?><input class="form-control" type="search" id="userSearch" name="q" value="<?= e($searchUsers) ?>" maxlength="100" placeholder="ชื่อ ชื่อผู้ใช้งาน หรือหน่วยงาน"></div><div class="status-filter"><label class="visually-hidden" for="userStatus">สถานะผู้ใช้งาน</label><select class="form-select" id="userStatus" name="status"><?php foreach ($userStatuses as $code => $label): ?><option value="<?= e($code) ?>"<?= $filterStatus === $code ? ' selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></div><button class="btn btn-outline-primary" type="submit">ค้นหา</button></form>
+  <form class="records-toolbar" action="dashboard.php" method="get"><input type="hidden" name="page" value="users"><div class="search-field"><label class="visually-hidden" for="userSearch">ค้นหาผู้ใช้งาน</label><?= app_icon('search') ?><input class="form-control" type="search" id="userSearch" name="q" value="<?= e($searchUsers) ?>" maxlength="100" placeholder="ชื่อ ชื่อผู้ใช้งาน หรือหน่วยงาน"></div><div class="status-filter"><label class="visually-hidden" for="userStatus">สถานะผู้ใช้งาน</label><select class="form-select" id="userStatus" name="status"><?php foreach ($userStatuses as $code => $label): ?><option value="<?= e($code) ?>"<?= $filterStatus === $code ? ' selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></div><button class="btn btn-outline-primary" type="submit">ค้นหา</button></form>
   <div class="results-summary">พบ <?= e(number_format($userCount)) ?> บัญชี · หน้า <?= $userPage ?> / <?= $totalUserPages ?></div>
   <?php if (!$accountRows): ?><div class="empty-state"><h2><?= $filterStatus === 'pending' ? 'ไม่มีคำขอรออนุมัติ' : 'ไม่พบบัญชีผู้ใช้งาน' ?></h2><p>เมื่อมีผู้สมัครใหม่ คำขอจะแสดงที่นี่</p></div><?php else: ?>
   <div class="records-wrap"><table class="table records-table mb-0"><caption class="visually-hidden">บัญชีผู้ใช้งานและสถานะการอนุมัติ</caption><thead><tr><th scope="col">ผู้ใช้งาน</th><th scope="col">หน่วยงาน / ประเภทที่ขอ</th><th scope="col">สถานะ</th><th scope="col">การดำเนินการ</th></tr></thead><tbody>
@@ -78,18 +78,18 @@
       <td data-label="สถานะ"><span class="status-badge <?= $account['status'] === 'active' ? 'status-success' : ($account['status'] === 'pending' ? 'status-warning' : 'status-danger') ?>"><?= e($userStatuses[$account['status']]) ?></span></td>
       <td class="record-action" data-no-export>
         <?php if ($account['status'] === 'pending' && $account['requested_role']): ?>
-          <a class="btn record-button" href="index.php?page=users&amp;review=<?= (int) $account['id'] ?>">พิจารณาคำขอ <?= app_icon('chevron') ?></a>
+          <a class="btn record-button" href="dashboard.php?page=users&amp;review=<?= (int) $account['id'] ?>">พิจารณาคำขอ <?= app_icon('chevron') ?></a>
         <?php elseif ((int) $account['id'] === (int) $currentUser['id']): ?>
           <span class="account-meta">บัญชีของคุณ</span>
         <?php elseif ($account['role_code'] === 'system_admin' || $account['role_code'] === 'applicant'): ?>
           <span class="account-meta">บัญชีที่ได้รับการป้องกัน</span>
         <?php else: ?>
-          <div class="record-actions-group"><a class="btn record-button" href="index.php?page=users&amp;status=<?= e($filterStatus) ?>&amp;edit=<?= (int) $account['id'] ?>">แก้ไข <?= app_icon('chevron') ?></a><a class="btn record-button <?= $account['status'] === 'active' ? 'record-button-danger' : '' ?>" href="index.php?page=users&amp;status=<?= e($filterStatus) ?>&amp;edit=<?= (int) $account['id'] ?>#accountStatus"><?= $account['status'] === 'active' ? 'ระงับบัญชี' : 'เปิดใช้งาน' ?></a></div>
+          <div class="record-actions-group"><a class="btn record-button" href="dashboard.php?page=users&amp;status=<?= e($filterStatus) ?>&amp;edit=<?= (int) $account['id'] ?>">แก้ไข <?= app_icon('chevron') ?></a><a class="btn record-button <?= $account['status'] === 'active' ? 'record-button-danger' : '' ?>" href="dashboard.php?page=users&amp;status=<?= e($filterStatus) ?>&amp;edit=<?= (int) $account['id'] ?>#accountStatus"><?= $account['status'] === 'active' ? 'ระงับบัญชี' : 'เปิดใช้งาน' ?></a></div>
         <?php endif; ?>
       </td>
     </tr>
   <?php endforeach; ?>
   </tbody></table></div>
   <?php endif; ?>
-  <?php if ($totalUserPages > 1): ?><nav class="user-pagination" aria-label="หน้ารายการผู้ใช้"><?php foreach ([$userPage - 1 => 'ก่อนหน้า', $userPage + 1 => 'ถัดไป'] as $number => $label): ?><?php if ($number >= 1 && $number <= $totalUserPages): ?><a class="btn btn-outline-primary" href="index.php?<?= e(http_build_query(['page' => 'users', 'status' => $filterStatus, 'q' => $searchUsers, 'p' => $number])) ?>"><?= e($label) ?></a><?php endif; ?><?php endforeach; ?></nav><?php endif; ?>
+  <?php if ($totalUserPages > 1): ?><nav class="user-pagination" aria-label="หน้ารายการผู้ใช้"><?php foreach ([$userPage - 1 => 'ก่อนหน้า', $userPage + 1 => 'ถัดไป'] as $number => $label): ?><?php if ($number >= 1 && $number <= $totalUserPages): ?><a class="btn btn-outline-primary" href="dashboard.php?<?= e(http_build_query(['page' => 'users', 'status' => $filterStatus, 'q' => $searchUsers, 'p' => $number])) ?>"><?= e($label) ?></a><?php endif; ?><?php endforeach; ?></nav><?php endif; ?>
 </section>

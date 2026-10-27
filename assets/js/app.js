@@ -131,6 +131,22 @@
     });
   }
 
+  const replacementDocument = document.getElementById('replacementDocument');
+  if (replacementDocument) {
+    const documentType = document.getElementById('loanDocumentType');
+    const documentTitle = document.getElementById('loanDocumentTitle');
+    function updateReplacementFields() {
+      const replacing = replacementDocument.value !== '';
+      [documentType, documentTitle].forEach(function (field) {
+        if (!field) return;
+        field.disabled = replacing;
+        field.required = !replacing;
+      });
+    }
+    replacementDocument.addEventListener('change', updateReplacementFields);
+    updateReplacementFields();
+  }
+
   const table = document.getElementById('recordsTable');
   const search = document.getElementById('recordSearch');
   const status = document.getElementById('statusFilter');
