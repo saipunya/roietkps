@@ -9,6 +9,7 @@ function app_icon($name)
 {
     $icons = [
         'dashboard' => 'grid-1x2-fill',
+        'home' => 'house-door-fill',
         'building' => 'bank2',
         'document' => 'file-earmark-text-fill',
         'clock' => 'clock-history',

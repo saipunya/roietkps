@@ -86,10 +86,6 @@ require __DIR__ . '/nav.php';
   <main id="main-content" class="main-content" tabindex="-1">
     <div class="page-heading">
       <div><h1><?= e($pageTitle) ?></h1><p class="page-description"><?= e($pages[$page]['description']) ?></p></div>
-      <?php if ($isDashboard): ?>
-        <?php if ($currentUser): ?><a class="btn btn-primary" href="dashboard.php"><?= app_icon('dashboard') ?> เข้าสู่ Dashboard</a>
-        <?php else: ?><a class="btn btn-primary" href="login.php" data-bs-toggle="modal" data-bs-target="#loginModal"><?= app_icon('login') ?> เข้าสู่ระบบ</a><?php endif; ?>
-      <?php endif; ?>
     </div>
     <?php if ($isDashboard) {
         require __DIR__ . '/views/dashboard.php';
