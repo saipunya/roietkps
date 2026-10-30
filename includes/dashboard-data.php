@@ -29,7 +29,7 @@ function load_role_dashboard(PDO $db, array $user): array
         $description = 'จัดการบัญชี หน่วยงาน และตรวจสอบความพร้อมของข้อมูลในระบบ';
         $scopeSql = '1 = 1';
         $scopeParameters = [];
-    } elseif ($role === 'provincial_officer') {
+    } elseif (role_is_provincial($role)) {
         $province = (int) $user['province_id'];
         $stats = [
             ['label' => 'หน่วยงานในจังหวัด', 'value' => (int) dashboard_value($db, "SELECT COUNT(*) FROM cooperatives WHERE province_id = ? AND status = 'active'", [$province]), 'unit' => 'แห่ง', 'note' => 'ในพื้นที่รับผิดชอบ', 'icon' => 'building', 'tone' => 'green'],

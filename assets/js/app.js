@@ -80,6 +80,19 @@
     });
     updateManagedScope();
   }
+  const createdRole = document.getElementById('createdRole');
+  if (createdRole) {
+    const createdCooperative = document.getElementById('createdCooperative');
+    const createdCooperativeField = document.getElementById('createdCooperativeField');
+    function updateCreatedScope() {
+      const needsCooperative = createdRole.value === 'cooperative_user';
+      createdCooperativeField.hidden = !needsCooperative;
+      createdCooperative.disabled = !needsCooperative;
+      createdCooperative.required = needsCooperative;
+    }
+    createdRole.addEventListener('change', updateCreatedScope);
+    updateCreatedScope();
+  }
   document.querySelectorAll('form[data-confirm]').forEach(function (form) {
     form.addEventListener('submit', function (event) {
       if (!window.confirm(form.dataset.confirm)) event.preventDefault();
@@ -129,6 +142,23 @@
       const row = remove.closest('[data-guarantor-row]');
       if (row) row.remove();
     });
+  }
+
+  const loanOrganization = document.getElementById('loanOrganization');
+  const loanOfficer = document.getElementById('loanOfficer');
+  if (loanOrganization && loanOfficer) {
+    function filterLoanOfficers() {
+      const organization = loanOrganization.selectedOptions[0];
+      const province = organization ? organization.dataset.province || '' : '';
+      Array.from(loanOfficer.options).forEach(function (option) {
+        const available = !option.value || (province !== '' && option.dataset.province === province);
+        option.hidden = !available;
+        option.disabled = !available;
+        if (!available && option.selected) loanOfficer.value = '';
+      });
+    }
+    loanOrganization.addEventListener('change', filterLoanOfficers);
+    filterLoanOfficers();
   }
 
   const paymentSchedule = document.querySelector('[data-payment-schedule]');

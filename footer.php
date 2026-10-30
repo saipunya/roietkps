@@ -22,7 +22,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
 <script src="assets/js/dashboard-charts.js?v=2"></script>
 <?php endif; ?>
-<script src="assets/js/app.js?v=10"></script>
+<script src="assets/js/app.js?v=11"></script>
 </body>
 
 </html>

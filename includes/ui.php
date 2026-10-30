@@ -65,7 +65,21 @@ function app_icon($name)
 
 function status_badge($status)
 {
-    $tones = ['อนุมัติ' => 'success', 'ดำเนินงาน' => 'success', 'ปกติ' => 'success', 'รอเอกสาร' => 'warning', 'ใกล้ครบกำหนด' => 'warning', 'ค้างชำระ' => 'danger', 'รอตรวจสอบ' => 'warning'];
+    $tones = [
+        'อนุมัติ' => 'success',
+        'อนุมัติแล้ว' => 'success',
+        'ดำเนินงาน' => 'success',
+        'ปกติ' => 'success',
+        'ส่งตรวจแล้ว' => 'warning',
+        'เจ้าหน้าที่ส่งเสริมกำลังตรวจ' => 'warning',
+        'รอจังหวัดตรวจสอบ' => 'warning',
+        'รอเอกสาร' => 'warning',
+        'ใกล้ครบกำหนด' => 'warning',
+        'ส่งกลับแก้ไข' => 'danger',
+        'ไม่อนุมัติ' => 'danger',
+        'ค้างชำระ' => 'danger',
+        'รอตรวจสอบ' => 'warning',
+    ];
     $tone = isset($tones[$status]) ? $tones[$status] : 'neutral';
     return '<span class="status-badge status-' . $tone . '"><span class="status-dot"></span>' . e($status) . '</span>';
 }

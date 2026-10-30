@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/includes/ui.php';
 require_once __DIR__ . '/includes/accounts.php';
-require __DIR__ . '/includes/data.php';
+require_once __DIR__ . '/includes/data.php';
 
 $publicPages = ['dashboard', 'documents'];
 $requestedPage = isset($_GET['page']) && is_string($_GET['page']) ? $_GET['page'] : 'dashboard';
@@ -41,6 +41,7 @@ try {
     }
 
     if ($page === 'dashboard') {
+        $dashboardData = load_public_dashboard_data(app_db(), $currentUser !== null);
         define('PUBLIC_DOCUMENTS_LIBRARY_ONLY', true);
         require_once __DIR__ . '/includes/public-documents.php';
         try {

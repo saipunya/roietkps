@@ -4,7 +4,7 @@ require_once __DIR__ . '/includes/accounts.php';
 header('Cache-Control: no-store');
 $pageTitle = 'สมัครสมาชิก';
 $isAuthPage = true;
-$values = ['full_name' => '', 'username' => '', 'email' => '', 'organization' => '', 'organization_type' => '', 'requested_role' => 'cooperative_user'];
+$values = ['full_name' => '', 'username' => '', 'organization' => '', 'organization_type' => '', 'requested_role' => 'cooperative_user'];
 $errors = [];
 $formError = '';
 
@@ -27,9 +27,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if (!preg_match('/\A[A-Za-z0-9][A-Za-z0-9._-]{3,49}\z/', $values['username'])) {
             $errors['username'] = 'ใช้ภาษาอังกฤษ ตัวเลข . _ หรือ - จำนวน 4–50 ตัว';
-        }
-        if (strlen($values['email']) > 254 || !filter_var($values['email'], FILTER_VALIDATE_EMAIL)) {
-            $errors['email'] = 'กรุณากรอกอีเมลให้ถูกต้อง';
         }
         if (!array_key_exists($values['requested_role'], request_roles())) {
             $errors['requested_role'] = 'กรุณาเลือกประเภทผู้ใช้งาน';
@@ -119,14 +116,14 @@ require __DIR__ . '/header.php';
           <form class="auth-form" action="register.php" method="post">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <div class="registration-grid">
-              <?php foreach (['full_name' => ['ชื่อ–นามสกุล', 'text', 150, 'name'], 'username' => ['ชื่อผู้ใช้งาน', 'text', 50, 'username'], 'email' => ['อีเมล', 'email', 254, 'email'], 'organization' => ['หน่วยงาน / ชื่อสหกรณ์', 'text', 200, 'organization']] as $key => $field): ?>
+              <?php foreach (['full_name' => ['ชื่อ–นามสกุล', 'text', 150, 'name'], 'username' => ['ชื่อผู้ใช้งาน', 'text', 50, 'username'], 'organization' => ['หน่วยงาน / ชื่อสหกรณ์', 'text', 200, 'organization']] as $key => $field): ?>
               <div class="auth-field"><label class="form-label"
                   for="register-<?= e($key) ?>"><?= e($field[0]) ?></label><input
                   class="form-control<?= isset($errors[$key]) ? ' is-invalid' : '' ?>" id="register-<?= e($key) ?>"
                   name="<?= e($key) ?>" type="<?= e($field[1]) ?>" maxlength="<?= $field[2] ?>"
                   autocomplete="<?= e($field[3]) ?>" value="<?= e($values[$key]) ?>"
                   <?= $key === 'username' ? 'placeholder="กรุณาใช้ภาษาอังกฤษ"' : '' ?>
-                  required<?= isset($errors[$key]) ? ' aria-invalid="true" aria-describedby="error-' . e($key) . '"' : '' ?><?= $key === 'username' ? ' autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9][A-Za-z0-9._-]{3,49}"' : '' ?>><?php if (isset($errors[$key])): ?>
+                  required<?= isset($errors[$key]) ? ' aria-invalid="true" aria-describedby="error-' . e($key) . '"' : '' ?><?= $key === 'username' ? ' autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9][A-Za-z0-9._\-]{3,49}"' : '' ?>><?php if (isset($errors[$key])): ?>
                 <p class="auth-field-error" id="error-<?= e($key) ?>"><?= e($errors[$key]) ?></p><?php endif; ?></div>
               <?php endforeach; ?>
             </div>

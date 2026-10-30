@@ -46,7 +46,7 @@ function post_approval_scope(array $user): array
     if ($user['role_code'] === 'cooperative_user') {
         return ['lc.cooperative_id = ?', [(int) $user['cooperative_id']]];
     }
-    if ($user['role_code'] === 'provincial_officer') {
+    if (role_is_provincial($user['role_code'])) {
         return ['c.province_id = ?', [(int) $user['province_id']]];
     }
     if ($user['role_code'] === 'promotion_officer') {
@@ -184,7 +184,7 @@ function post_approval_contract_transitions(string $status): array
 
 function post_approval_sync_schedule_status(PDO $db, int $scheduleId): ?string
 {
-    $query = $db->prepare('SELECT rs.due_date, rs.principal_due, rs.interest_due, rs.penalty_due, COALESCE(SUM(r.principal_amount), 0) AS principal_paid, COALESCE(SUM(r.interest_amount), 0) AS interest_paid, COALESCE(SUM(r.penalty_amount), 0) AS penalty_paid FROM repayment_schedules rs LEFT JOIN repayments r ON r.schedule_id = rs.id WHERE rs.id = ? GROUP BY rs.id, rs.due_date, rs.principal_due, rs.interest_due, rs.penalty_due');
+    $query = $db->prepare('SELECT rs.due_date, rs.principal_due, rs.interest_due, rs.penalty_due, COALESCE(SUM(r.principal_amount), 0) AS principal_paid, COALESCE(SUM(r.interest_amount), 0) AS interest_paid, COALESCE(SUM(r.penalty_amount), 0) AS penalty_paid FROM repayment_schedules rs LEFT JOIN repayments r ON r.schedule_id = rs.id AND r.voided_at IS NULL WHERE rs.id = ? GROUP BY rs.id, rs.due_date, rs.principal_due, rs.interest_due, rs.penalty_due');
     $query->execute([$scheduleId]);
     $row = $query->fetch();
     if (!$row) {
@@ -197,6 +197,21 @@ function post_approval_sync_schedule_status(PDO $db, int $scheduleId): ?string
     $status = $complete ? 'paid' : ($paid > 0 ? 'partial' : ($row['due_date'] < post_approval_today() ? 'overdue' : 'scheduled'));
     $db->prepare('UPDATE repayment_schedules SET status = ?, paid_at = IF(? = \'paid\', COALESCE(paid_at, UTC_TIMESTAMP()), NULL) WHERE id = ?')->execute([$status, $status, $scheduleId]);
     return $status;
+}
+
+function post_approval_recalculate_contract(PDO $db, int $contractId): array
+{
+    $query = $db->prepare("SELECT lc.principal_amount, lc.status, COALESCE((SELECT SUM(r.principal_amount) FROM repayments r WHERE r.contract_id = lc.id AND r.voided_at IS NULL), 0) AS principal_paid, (SELECT COUNT(*) FROM repayment_schedules rs WHERE rs.contract_id = lc.id) AS schedule_count, (SELECT COUNT(*) FROM repayment_schedules rs WHERE rs.contract_id = lc.id AND rs.status NOT IN ('paid', 'waived')) AS pending_count FROM loan_contracts lc WHERE lc.id = ? FOR UPDATE");
+    $query->execute([$contractId]);
+    $contract = $query->fetch();
+    if (!$contract) {
+        throw new DomainException('ไม่พบสัญญาที่ต้องการคำนวณใหม่');
+    }
+    $remaining = max(0, (float) $contract['principal_amount'] - (float) $contract['principal_paid']);
+    $allSchedulesSettled = (int) $contract['schedule_count'] === 0 || (int) $contract['pending_count'] === 0;
+    $newStatus = $remaining <= 0.009 && $allSchedulesSettled ? 'completed' : 'active';
+    $db->prepare('UPDATE loan_contracts SET outstanding_principal = ?, status = ? WHERE id = ?')->execute([$remaining, $newStatus, $contractId]);
+    return ['remaining' => $remaining, 'status' => $newStatus];
 }
 
 $trackingSchemaReady = post_approval_schema_ready($db);
@@ -297,7 +312,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (!$oldSchedule) {
                         throw new DomainException('ไม่พบงวดชำระที่ต้องการแก้ไข');
                     }
-                    $query = $db->prepare('SELECT COUNT(*) FROM repayments WHERE schedule_id = ?');
+                    $query = $db->prepare('SELECT COUNT(*) FROM repayments WHERE schedule_id = ? AND voided_at IS NULL');
                     $query->execute([$scheduleId]);
                     if ((int) $query->fetchColumn() > 0) {
                         throw new DomainException('งวดที่มีรายการรับชำระแล้วไม่สามารถแก้ไขได้');
@@ -324,9 +339,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
 
-            if ($operation === 'record_repayment') {
+            if (in_array($operation, ['record_repayment', 'correct_repayment'], true)) {
                 if (!account_can($currentUser, 'repayments.record')) {
                     throw new DomainException('คุณไม่มีสิทธิ์บันทึกรับชำระ');
+                }
+                $isCorrection = $operation === 'correct_repayment';
+                $originalRepaymentId = $isCorrection ? (filter_var(post_text('repayment_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0) : 0;
+                $correctionReason = $isCorrection ? post_text('correction_reason') : '';
+                if ($isCorrection && (!$originalRepaymentId || mb_strlen($correctionReason, 'UTF-8') < 5 || mb_strlen($correctionReason, 'UTF-8') > 1000)) {
+                    throw new DomainException('กรุณาระบุเหตุผลการแก้ไขรายการรับชำระ 5–1,000 ตัวอักษร');
                 }
                 $scheduleId = filter_var(post_text('schedule_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
                 $receiptNo = post_text('receipt_no');
@@ -344,8 +365,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $db->beginTransaction();
                 $contract = post_approval_contract_for_update($db, $currentUser, $contractId);
-                if ($contract['status'] !== 'active' || $principalAmount > (float) $contract['outstanding_principal'] + 0.009) {
-                    throw new DomainException('สัญญาไม่พร้อมรับชำระหรือยอดเงินต้นเกินยอดคงเหลือ');
+                if ((!$isCorrection && $contract['status'] !== 'active') || ($isCorrection && !in_array($contract['status'], ['active', 'completed'], true))) {
+                    throw new DomainException('สัญญาไม่อยู่ในสถานะที่บันทึกหรือแก้ไขรายการรับชำระได้');
+                }
+                $oldRepayment = null;
+                if ($isCorrection) {
+                    $query = $db->prepare('SELECT * FROM repayments WHERE id = ? AND contract_id = ? AND voided_at IS NULL FOR UPDATE');
+                    $query->execute([$originalRepaymentId, $contractId]);
+                    $oldRepayment = $query->fetch();
+                    if (!$oldRepayment) {
+                        throw new DomainException('ไม่พบรายการรับชำระที่แก้ไข หรือรายการถูกยกเลิกแล้ว');
+                    }
                 }
                 if ($scheduleId) {
                     $query = $db->prepare('SELECT id FROM repayment_schedules WHERE id = ? AND contract_id = ? FOR UPDATE');
@@ -354,34 +384,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         throw new DomainException('งวดชำระที่เลือกไม่อยู่ในสัญญานี้');
                     }
                 }
-                $query = $db->prepare('INSERT INTO repayments (contract_id, schedule_id, receipt_no, paid_at, principal_amount, interest_amount, penalty_amount, payment_channel, note, recorded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-                $query->execute([$contractId, $scheduleId ?: null, $receiptNo, $paidAt, $principalAmount, $interestAmount, $penaltyAmount, $paymentChannel ?: null, $note ?: null, $currentUser['id']]);
+                $query = $db->prepare('SELECT COALESCE(SUM(principal_amount), 0) FROM repayments WHERE contract_id = ? AND voided_at IS NULL AND id <> ?');
+                $query->execute([$contractId, $originalRepaymentId]);
+                if ((float) $query->fetchColumn() + $principalAmount > (float) $contract['principal_amount'] + 0.009) {
+                    throw new DomainException('ยอดเงินต้นรับชำระรวมเกินเงินต้นตามสัญญา');
+                }
+                if ($oldRepayment) {
+                    $db->prepare('UPDATE repayments SET voided_at = UTC_TIMESTAMP(), voided_by = ?, void_reason = ? WHERE id = ?')->execute([(int) $currentUser['id'], $correctionReason, $originalRepaymentId]);
+                }
+                $query = $db->prepare('INSERT INTO repayments (replaces_repayment_id, contract_id, schedule_id, receipt_no, paid_at, principal_amount, interest_amount, penalty_amount, payment_channel, note, recorded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                $query->execute([$originalRepaymentId ?: null, $contractId, $scheduleId ?: null, $receiptNo, $paidAt, $principalAmount, $interestAmount, $penaltyAmount, $paymentChannel ?: null, $note ?: null, $currentUser['id']]);
                 $repaymentId = (int) $db->lastInsertId();
-                $remaining = max(0, (float) $contract['outstanding_principal'] - $principalAmount);
-                if ($scheduleId) {
-                    $scheduleStatus = post_approval_sync_schedule_status($db, $scheduleId);
+                $affectedSchedules = array_unique(array_filter([$scheduleId, (int) ($oldRepayment['schedule_id'] ?? 0)]));
+                foreach ($affectedSchedules as $affectedScheduleId) {
+                    $scheduleStatus = post_approval_sync_schedule_status($db, (int) $affectedScheduleId);
                     if ($scheduleStatus === 'paid') {
-                        workflow_complete_tasks($db, 'repayment_followup', 'repayment_schedule', $scheduleId, (int) $currentUser['id']);
+                        workflow_complete_tasks($db, 'repayment_followup', 'repayment_schedule', (int) $affectedScheduleId, (int) $currentUser['id']);
                     }
                 }
-                $query = $db->prepare("SELECT COUNT(*) AS schedule_count, COALESCE(SUM(status NOT IN ('paid', 'waived')), 0) AS pending_count FROM repayment_schedules WHERE contract_id = ?");
-                $query->execute([$contractId]);
-                $scheduleProgress = $query->fetch();
-                $allSchedulesSettled = (int) $scheduleProgress['schedule_count'] === 0 || (int) $scheduleProgress['pending_count'] === 0;
-                $newStatus = $remaining <= 0.009 && $allSchedulesSettled ? 'completed' : 'active';
-                $db->prepare('UPDATE loan_contracts SET outstanding_principal = ?, status = ? WHERE id = ?')->execute([$remaining, $newStatus, $contractId]);
-                post_approval_audit($db, (int) $currentUser['id'], 'repayment.record', 'repayment', $repaymentId, null, ['contract_id' => $contractId, 'schedule_id' => $scheduleId ?: null, 'receipt_no' => $receiptNo, 'principal_amount' => $principalAmount, 'interest_amount' => $interestAmount, 'penalty_amount' => $penaltyAmount]);
+                $contractResult = post_approval_recalculate_contract($db, $contractId);
+                post_approval_audit($db, (int) $currentUser['id'], $isCorrection ? 'repayment.correct' : 'repayment.record', 'repayment', $repaymentId, $oldRepayment ?: null, ['contract_id' => $contractId, 'replaces_repayment_id' => $originalRepaymentId ?: null, 'schedule_id' => $scheduleId ?: null, 'receipt_no' => $receiptNo, 'principal_amount' => $principalAmount, 'interest_amount' => $interestAmount, 'penalty_amount' => $penaltyAmount, 'correction_reason' => $correctionReason ?: null]);
                 $cooperativeUsers = notification_active_user_ids($db, 'cooperative_user', null, (int) $contract['cooperative_id']);
-                notification_create_for_users($db, $cooperativeUsers, 'repayment', 'บันทึกรับชำระแล้ว', 'สัญญา ' . ($contract['contract_no'] ?: $contract['application_no']) . ' รับชำระรวม ' . number_format($principalAmount + $interestAmount + $penaltyAmount, 2) . ' บาท', 'normal', 'dashboard.php?page=debt&contract=' . $contractId, 'repayment:' . $repaymentId . ':recorded', 'repayment', $repaymentId);
+                notification_create_for_users($db, $cooperativeUsers, 'repayment', $isCorrection ? 'แก้ไขรายการรับชำระแล้ว' : 'บันทึกรับชำระแล้ว', 'สัญญา ' . ($contract['contract_no'] ?: $contract['application_no']) . ' รับชำระรวม ' . number_format($principalAmount + $interestAmount + $penaltyAmount, 2) . ' บาท', 'normal', 'dashboard.php?page=debt&contract=' . $contractId, 'repayment:' . $repaymentId . ':' . ($isCorrection ? 'corrected' : 'recorded'), 'repayment', $repaymentId);
                 $db->commit();
-                $_SESSION['tracking_notice'] = $newStatus === 'completed' ? 'บันทึกรับชำระแล้วและเงินต้นครบตามสัญญา' : 'บันทึกรับชำระแล้ว';
+                $_SESSION['tracking_notice'] = $isCorrection ? 'บันทึกรายการรับชำระฉบับแก้ไขแล้ว โดยเก็บรายการเดิมไว้ในประวัติ' : ($contractResult['status'] === 'completed' ? 'บันทึกรับชำระแล้วและเงินต้นครบตามสัญญา' : 'บันทึกรับชำระแล้ว');
                 header('Location: dashboard.php?page=debt&contract=' . $contractId, true, 303);
                 exit;
             }
 
-            if ($operation === 'record_follow_up') {
+            if ($operation === 'void_repayment') {
+                if (!account_can($currentUser, 'repayments.record')) {
+                    throw new DomainException('คุณไม่มีสิทธิ์ยกเลิกรายการรับชำระ');
+                }
+                $repaymentId = filter_var(post_text('repayment_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+                $voidReason = post_text('void_reason');
+                if (!$repaymentId || mb_strlen($voidReason, 'UTF-8') < 5 || mb_strlen($voidReason, 'UTF-8') > 1000) {
+                    throw new DomainException('กรุณาระบุเหตุผลการยกเลิก 5–1,000 ตัวอักษร');
+                }
+                $db->beginTransaction();
+                $contract = post_approval_contract_for_update($db, $currentUser, $contractId);
+                if (!in_array($contract['status'], ['active', 'completed'], true)) {
+                    throw new DomainException('สัญญาไม่อยู่ในสถานะที่ยกเลิกรายการรับชำระได้');
+                }
+                $query = $db->prepare('SELECT * FROM repayments WHERE id = ? AND contract_id = ? AND voided_at IS NULL FOR UPDATE');
+                $query->execute([$repaymentId, $contractId]);
+                $repayment = $query->fetch();
+                if (!$repayment) {
+                    throw new DomainException('ไม่พบรายการรับชำระ หรือรายการถูกยกเลิกแล้ว');
+                }
+                $db->prepare('UPDATE repayments SET voided_at = UTC_TIMESTAMP(), voided_by = ?, void_reason = ? WHERE id = ?')->execute([(int) $currentUser['id'], $voidReason, $repaymentId]);
+                if ($repayment['schedule_id']) {
+                    post_approval_sync_schedule_status($db, (int) $repayment['schedule_id']);
+                }
+                post_approval_recalculate_contract($db, $contractId);
+                post_approval_audit($db, (int) $currentUser['id'], 'repayment.void', 'repayment', $repaymentId, $repayment, ['void_reason' => $voidReason]);
+                $db->commit();
+                $_SESSION['tracking_notice'] = 'ยกเลิกรายการรับชำระแล้ว รายการเดิมยังคงอยู่ในประวัติ';
+                header('Location: dashboard.php?page=debt&contract=' . $contractId, true, 303);
+                exit;
+            }
+
+            if (in_array($operation, ['record_follow_up', 'correct_follow_up'], true)) {
                 if (!account_can($currentUser, 'debt.record_follow_up') || !$trackingSchemaReady) {
                     throw new DomainException('คุณไม่มีสิทธิ์บันทึกผลติดตามหรือยังไม่ติดตั้งฐานข้อมูลส่วนติดตาม');
+                }
+                $isCorrection = $operation === 'correct_follow_up';
+                $originalFollowUpId = $isCorrection ? (filter_var(post_text('follow_up_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0) : 0;
+                $correctionReason = $isCorrection ? post_text('correction_reason') : '';
+                if ($isCorrection && (!$originalFollowUpId || mb_strlen($correctionReason, 'UTF-8') < 5 || mb_strlen($correctionReason, 'UTF-8') > 1000)) {
+                    throw new DomainException('กรุณาระบุเหตุผลการแก้ไขบันทึกติดตาม 5–1,000 ตัวอักษร');
                 }
                 $scheduleId = filter_var(post_text('schedule_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
                 $followedUpAt = post_approval_datetime(post_text('followed_up_at'), 'วันและเวลาติดตาม');
@@ -399,6 +470,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!in_array($contract['status'], ['active', 'completed'], true)) {
                     throw new DomainException('สัญญานี้ยังไม่อยู่ในขั้นตอนติดตามการชำระ');
                 }
+                $oldFollowUp = null;
+                if ($isCorrection) {
+                    $query = $db->prepare('SELECT * FROM contract_follow_ups WHERE id = ? AND contract_id = ? AND voided_at IS NULL FOR UPDATE');
+                    $query->execute([$originalFollowUpId, $contractId]);
+                    $oldFollowUp = $query->fetch();
+                    if (!$oldFollowUp) {
+                        throw new DomainException('ไม่พบบันทึกติดตามที่แก้ไข หรือรายการถูกยกเลิกแล้ว');
+                    }
+                }
                 if ($scheduleId) {
                     $query = $db->prepare('SELECT id FROM repayment_schedules WHERE id = ? AND contract_id = ?');
                     $query->execute([$scheduleId, $contractId]);
@@ -406,10 +486,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         throw new DomainException('งวดชำระที่เลือกไม่อยู่ในสัญญานี้');
                     }
                 }
-                $query = $db->prepare('INSERT INTO contract_follow_ups (contract_id, schedule_id, followed_up_at, channel, outcome, note, next_follow_up_date, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-                $query->execute([$contractId, $scheduleId ?: null, $followedUpAt, $channel, $outcome, $note, $nextDate, $currentUser['id']]);
+                if ($oldFollowUp) {
+                    $db->prepare('UPDATE contract_follow_ups SET voided_at = UTC_TIMESTAMP(), voided_by = ?, void_reason = ? WHERE id = ?')->execute([(int) $currentUser['id'], $correctionReason, $originalFollowUpId]);
+                }
+                $query = $db->prepare('INSERT INTO contract_follow_ups (replaces_follow_up_id, contract_id, schedule_id, followed_up_at, channel, outcome, note, next_follow_up_date, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                $query->execute([$originalFollowUpId ?: null, $contractId, $scheduleId ?: null, $followedUpAt, $channel, $outcome, $note, $nextDate, $currentUser['id']]);
                 $followUpId = (int) $db->lastInsertId();
-                post_approval_audit($db, (int) $currentUser['id'], 'debt.follow_up', 'contract_follow_up', $followUpId, null, ['contract_id' => $contractId, 'schedule_id' => $scheduleId ?: null, 'outcome' => $outcome, 'next_follow_up_date' => $nextDate]);
+                post_approval_audit($db, (int) $currentUser['id'], $isCorrection ? 'debt.follow_up_correct' : 'debt.follow_up', 'contract_follow_up', $followUpId, $oldFollowUp ?: null, ['contract_id' => $contractId, 'replaces_follow_up_id' => $originalFollowUpId ?: null, 'schedule_id' => $scheduleId ?: null, 'outcome' => $outcome, 'next_follow_up_date' => $nextDate, 'correction_reason' => $correctionReason ?: null]);
                 if (notification_schema_ready($db)) {
                     $query = $db->prepare("UPDATE workflow_tasks SET status = 'completed', completed_at = UTC_TIMESTAMP(), completed_by = ? WHERE task_type = 'debt_follow_up' AND entity_type = 'loan_contract' AND entity_id = ? AND assigned_user_id = ? AND status IN ('open', 'in_progress')");
                     $query->execute([$currentUser['id'], $contractId, $currentUser['id']]);
@@ -434,7 +517,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ]);
                 }
                 $db->commit();
-                $_SESSION['tracking_notice'] = 'บันทึกผลการติดตามแล้ว';
+                $_SESSION['tracking_notice'] = $isCorrection ? 'บันทึกผลติดตามฉบับแก้ไขแล้ว โดยเก็บรายการเดิมไว้ในประวัติ' : 'บันทึกผลการติดตามแล้ว';
+                header('Location: dashboard.php?page=debt&contract=' . $contractId, true, 303);
+                exit;
+            }
+
+            if ($operation === 'void_follow_up') {
+                if (!account_can($currentUser, 'debt.record_follow_up') || !$trackingSchemaReady) {
+                    throw new DomainException('คุณไม่มีสิทธิ์ยกเลิกบันทึกติดตาม');
+                }
+                $followUpId = filter_var(post_text('follow_up_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+                $voidReason = post_text('void_reason');
+                if (!$followUpId || mb_strlen($voidReason, 'UTF-8') < 5 || mb_strlen($voidReason, 'UTF-8') > 1000) {
+                    throw new DomainException('กรุณาระบุเหตุผลการยกเลิก 5–1,000 ตัวอักษร');
+                }
+                $db->beginTransaction();
+                post_approval_contract_for_update($db, $currentUser, $contractId);
+                $query = $db->prepare('SELECT * FROM contract_follow_ups WHERE id = ? AND contract_id = ? AND voided_at IS NULL FOR UPDATE');
+                $query->execute([$followUpId, $contractId]);
+                $followUp = $query->fetch();
+                if (!$followUp) {
+                    throw new DomainException('ไม่พบบันทึกติดตาม หรือรายการถูกยกเลิกแล้ว');
+                }
+                $db->prepare('UPDATE contract_follow_ups SET voided_at = UTC_TIMESTAMP(), voided_by = ?, void_reason = ? WHERE id = ?')->execute([(int) $currentUser['id'], $voidReason, $followUpId]);
+                post_approval_audit($db, (int) $currentUser['id'], 'debt.follow_up_void', 'contract_follow_up', $followUpId, $followUp, ['void_reason' => $voidReason]);
+                $db->commit();
+                $_SESSION['tracking_notice'] = 'ยกเลิกบันทึกติดตามแล้ว รายการเดิมยังคงอยู่ในประวัติ';
                 header('Location: dashboard.php?page=debt&contract=' . $contractId, true, 303);
                 exit;
             }
@@ -473,7 +581,7 @@ $query = $db->prepare("SELECT
     (SELECT COUNT(*) FROM repayment_schedules rs WHERE rs.contract_id = lc.id) AS schedule_count,
     (SELECT COUNT(*) FROM repayment_schedules rs WHERE rs.contract_id = lc.id AND (rs.status = 'overdue' OR (rs.due_date < CURRENT_DATE() AND rs.status IN ('scheduled', 'partial')))) AS overdue_count,
     (SELECT MIN(rs.due_date) FROM repayment_schedules rs WHERE rs.contract_id = lc.id AND rs.status IN ('scheduled', 'partial', 'overdue')) AS next_due_date,
-    (SELECT COALESCE(SUM(r.principal_amount), 0) FROM repayments r WHERE r.contract_id = lc.id) AS principal_paid
+    (SELECT COALESCE(SUM(r.principal_amount), 0) FROM repayments r WHERE r.contract_id = lc.id AND r.voided_at IS NULL) AS principal_paid
     FROM loan_contracts lc
     JOIN loan_applications a ON a.id = lc.loan_application_id
     JOIN cooperatives c ON c.id = lc.cooperative_id
@@ -508,9 +616,13 @@ $repaymentSchedules = [];
 $repaymentRows = [];
 $followUpRows = [];
 $scheduleEdit = null;
+$repaymentEdit = null;
+$repaymentVoid = null;
+$followUpEdit = null;
+$followUpVoid = null;
 $nextInstallmentNo = 1;
 if ($selectedContract) {
-    $query = $db->prepare('SELECT rs.*, (SELECT COALESCE(SUM(r.principal_amount), 0) FROM repayments r WHERE r.schedule_id = rs.id) AS principal_paid, (SELECT COALESCE(SUM(r.interest_amount), 0) FROM repayments r WHERE r.schedule_id = rs.id) AS interest_paid, (SELECT COALESCE(SUM(r.penalty_amount), 0) FROM repayments r WHERE r.schedule_id = rs.id) AS penalty_paid FROM repayment_schedules rs WHERE rs.contract_id = ? ORDER BY rs.installment_no, rs.due_date, rs.id');
+    $query = $db->prepare('SELECT rs.*, (SELECT COALESCE(SUM(r.principal_amount), 0) FROM repayments r WHERE r.schedule_id = rs.id AND r.voided_at IS NULL) AS principal_paid, (SELECT COALESCE(SUM(r.interest_amount), 0) FROM repayments r WHERE r.schedule_id = rs.id AND r.voided_at IS NULL) AS interest_paid, (SELECT COALESCE(SUM(r.penalty_amount), 0) FROM repayments r WHERE r.schedule_id = rs.id AND r.voided_at IS NULL) AS penalty_paid FROM repayment_schedules rs WHERE rs.contract_id = ? ORDER BY rs.installment_no, rs.due_date, rs.id');
     $query->execute([$selectedContract['id']]);
     $repaymentSchedules = $query->fetchAll();
     if ($repaymentSchedules) {
@@ -530,6 +642,26 @@ if ($selectedContract) {
         $query = $db->prepare('SELECT f.*, rs.installment_no, u.full_name AS creator_name FROM contract_follow_ups f LEFT JOIN repayment_schedules rs ON rs.id = f.schedule_id JOIN users u ON u.id = f.created_by WHERE f.contract_id = ? ORDER BY f.followed_up_at DESC, f.id DESC');
         $query->execute([$selectedContract['id']]);
         $followUpRows = $query->fetchAll();
+    }
+    $repaymentEditId = isset($_GET['payment_edit']) && is_scalar($_GET['payment_edit']) ? (int) $_GET['payment_edit'] : 0;
+    $repaymentVoidId = isset($_GET['payment_void']) && is_scalar($_GET['payment_void']) ? (int) $_GET['payment_void'] : 0;
+    foreach ($repaymentRows as $repaymentRow) {
+        if ($repaymentRow['voided_at'] === null && (int) $repaymentRow['id'] === $repaymentEditId) {
+            $repaymentEdit = $repaymentRow;
+        }
+        if ($repaymentRow['voided_at'] === null && (int) $repaymentRow['id'] === $repaymentVoidId) {
+            $repaymentVoid = $repaymentRow;
+        }
+    }
+    $followUpEditId = isset($_GET['followup_edit']) && is_scalar($_GET['followup_edit']) ? (int) $_GET['followup_edit'] : 0;
+    $followUpVoidId = isset($_GET['followup_void']) && is_scalar($_GET['followup_void']) ? (int) $_GET['followup_void'] : 0;
+    foreach ($followUpRows as $followUpRow) {
+        if ($followUpRow['voided_at'] === null && (int) $followUpRow['id'] === $followUpEditId) {
+            $followUpEdit = $followUpRow;
+        }
+        if ($followUpRow['voided_at'] === null && (int) $followUpRow['id'] === $followUpVoidId) {
+            $followUpVoid = $followUpRow;
+        }
     }
 }
 

@@ -64,6 +64,14 @@ function notification_active_user_ids(PDO $db, string $roleCode, ?int $provinceI
     return array_map('intval', $query->fetchAll(PDO::FETCH_COLUMN));
 }
 
+function notification_provincial_user_ids(PDO $db, int $provinceId): array
+{
+    return array_values(array_unique(array_merge(
+        notification_active_user_ids($db, 'provincial_officer', $provinceId),
+        notification_active_user_ids($db, 'provincial_director', $provinceId)
+    )));
+}
+
 function notification_create(
     PDO $db,
     int $userId,
@@ -250,7 +258,7 @@ function tracking_loan_submitted(PDO $db, int $applicationId, int $actorId): voi
         $days = 3;
         $source = 'loan:' . $applicationId . ':promotion:round:' . (int) $loan['review_round'];
     } else {
-        $users = notification_active_user_ids($db, 'provincial_officer', (int) $loan['province_id']);
+        $users = notification_provincial_user_ids($db, (int) $loan['province_id']);
         $taskType = 'officer_assignment';
         $taskEntityType = 'cooperative';
         $taskEntityId = (int) $loan['cooperative_id'];
@@ -295,7 +303,7 @@ function tracking_promotion_reviewed(PDO $db, int $applicationId, int $actorId, 
         notification_create_for_users($db, $users, 'loan_revision', 'คำขอกู้ถูกส่งกลับให้แก้ไข', $shortComment, 'urgent', $actionUrl, $source . ':notice', 'loan_application', $applicationId);
         return;
     }
-    $users = notification_active_user_ids($db, 'provincial_officer', (int) $loan['province_id']);
+    $users = notification_provincial_user_ids($db, (int) $loan['province_id']);
     $source = 'loan:' . $applicationId . ':province:round:' . (int) $loan['review_round'];
     workflow_tasks_for_users($db, $users, [
         'task_type' => 'province_review', 'entity_type' => 'loan_application', 'entity_id' => $applicationId,
@@ -407,7 +415,7 @@ function tracking_sync_user_tasks(PDO $db, array $user): void
         }
         return;
     }
-    if ($role === 'provincial_officer') {
+    if (role_is_provincial($role)) {
         $provinceId = (int) $user['province_id'];
         $unassigned = $db->prepare("SELECT DISTINCT c.id, c.name FROM cooperatives c JOIN loan_applications a ON a.cooperative_id = c.id WHERE c.province_id = ? AND a.assigned_officer_id IS NULL AND a.status IN ('submitted', 'promotion_review')");
         $unassigned->execute([$provinceId]);
@@ -452,7 +460,7 @@ function tracking_sync_repayments(PDO $db, array $user): void
     } elseif ($role === 'promotion_officer') {
         $scope = 'EXISTS (SELECT 1 FROM organization_officer_assignments oa WHERE oa.cooperative_id = lc.cooperative_id AND oa.officer_user_id = ? AND (oa.ends_on IS NULL OR oa.ends_on >= CURRENT_DATE()))';
         $parameters[] = (int) $user['id'];
-    } elseif ($role === 'provincial_officer') {
+    } elseif (role_is_provincial($role)) {
         $scope = 'c.province_id = ?';
         $parameters[] = (int) $user['province_id'];
     } else {

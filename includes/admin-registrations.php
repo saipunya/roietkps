@@ -7,8 +7,14 @@ if (!isset($currentUser) || !account_is_admin($currentUser)) {
 $approvalError = '';
 $approvalNotice = $_SESSION['approval_notice'] ?? '';
 unset($_SESSION['approval_notice']);
+$createdAccountCredentials = isset($_SESSION['created_account_credentials']) && is_array($_SESSION['created_account_credentials'])
+    ? $_SESSION['created_account_credentials']
+    : null;
+unset($_SESSION['created_account_credentials']);
 $db = app_db();
 $managementFailedUserId = 0;
+$showCreateAccount = isset($_GET['action']) && $_GET['action'] === 'new';
+$defaultAdminProvinceId = (int) $db->query("SELECT id FROM provinces WHERE code = '45' OR name = 'ร้อยเอ็ด' ORDER BY CASE WHEN code = '45' THEN 0 ELSE 1 END, id LIMIT 1")->fetchColumn();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_valid($_POST['csrf_token'] ?? null)) {
         http_response_code(403);
@@ -16,6 +22,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         try {
             $operation = post_text('operation');
+            if ($operation === 'create_account') {
+                if ($defaultAdminProvinceId < 1) {
+                    throw new DomainException('ไม่พบข้อมูลจังหวัดร้อยเอ็ด กรุณาตรวจสอบตารางจังหวัด');
+                }
+                $password = random_initial_password(8);
+                $username = post_text('username');
+                create_managed_account($db, (int) $currentUser['id'], [
+                    'username' => $username, 'full_name' => post_text('full_name'), 'position_title' => post_text('position_title'),
+                    'role_code' => post_text('role_code'), 'province_id' => $defaultAdminProvinceId, 'cooperative_id' => post_text('cooperative_id'),
+                ], $password);
+                $_SESSION['created_account_credentials'] = ['username' => $username, 'password' => $password];
+                $_SESSION['approval_notice'] = 'เพิ่มบัญชีผู้ใช้งานแล้ว กรุณาส่งชื่อผู้ใช้และรหัสผ่านชั่วคราวให้เจ้าของบัญชี';
+                unset($password);
+                header('Location: dashboard.php?page=users&status=active', true, 303);
+                exit;
+            }
             $userId = filter_var(post_text('user_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
             if (!$userId) {
                 throw new DomainException('คำขอไม่ถูกต้อง');
@@ -31,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if ($operation === 'update_account') {
                 update_managed_account($db, (int) $currentUser['id'], (int) $userId, [
-                    'username' => post_text('username'), 'full_name' => post_text('full_name'), 'email' => post_text('email'),
+                    'username' => post_text('username'), 'full_name' => post_text('full_name'), 'position_title' => post_text('position_title'),
                     'role_code' => post_text('role_code'), 'province_id' => post_text('province_id'), 'cooperative_id' => post_text('cooperative_id'),
                 ]);
                 $returnStatus = in_array(post_text('return_status'), ['active', 'suspended'], true) ? post_text('return_status') : 'active';
@@ -50,11 +72,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (DomainException $exception) {
             http_response_code(422);
             $approvalError = $exception->getMessage();
+            if (isset($operation) && $operation === 'create_account') {
+                $showCreateAccount = true;
+            }
             if (isset($operation) && in_array($operation, ['update_account', 'set_account_status'], true)) {
                 $managementFailedUserId = isset($userId) ? (int) $userId : 0;
             }
         }
     }
+}
+
+$creationCooperatives = [];
+if ($showCreateAccount) {
+    $query = $db->prepare("SELECT id, name, province_id FROM cooperatives WHERE status = 'active' AND province_id = ? ORDER BY name");
+    $query->execute([$defaultAdminProvinceId]);
+    $creationCooperatives = $query->fetchAll();
 }
 
 $userStatuses = ['pending' => 'รออนุมัติ', 'active' => 'ใช้งาน', 'suspended' => 'ไม่อนุมัติ / ระงับ'];
@@ -64,8 +96,8 @@ $where = 'u.status = ?';
 $parameters = [$filterStatus];
 if ($searchUsers !== '') {
     $like = '%' . strtr($searchUsers, ['!' => '!!', '%' => '!%', '_' => '!_']) . '%';
-    $where .= " AND (u.full_name LIKE ? ESCAPE '!' OR u.username LIKE ? ESCAPE '!' OR q.organization LIKE ? ESCAPE '!')";
-    array_push($parameters, $like, $like, $like);
+    $where .= " AND (u.full_name LIKE ? ESCAPE '!' OR u.position_title LIKE ? ESCAPE '!' OR u.username LIKE ? ESCAPE '!' OR q.organization LIKE ? ESCAPE '!')";
+    array_push($parameters, $like, $like, $like, $like);
 }
 $query = $db->prepare('SELECT COUNT(*) FROM users u LEFT JOIN registration_requests q ON q.user_id = u.id WHERE ' . $where);
 $query->execute($parameters);
@@ -73,7 +105,7 @@ $userCount = (int) $query->fetchColumn();
 $userPage = isset($_GET['p']) && is_scalar($_GET['p']) ? max(1, (int) $_GET['p']) : 1;
 $totalUserPages = max(1, (int) ceil($userCount / 20));
 $userPage = min($userPage, $totalUserPages);
-$query = $db->prepare('SELECT u.id, u.username, u.full_name, u.email, u.status, u.data_scope, u.province_id, u.cooperative_id, r.code AS role_code, r.name AS role_name, q.organization, q.organization_type, q.requested_role, q.reviewed_at, q.review_note, a.full_name AS reviewer_name FROM users u JOIN roles r ON r.id = u.role_id LEFT JOIN registration_requests q ON q.user_id = u.id LEFT JOIN users a ON a.id = q.reviewed_by WHERE ' . $where . ' ORDER BY u.created_at, u.id LIMIT 20 OFFSET ' . (($userPage - 1) * 20));
+$query = $db->prepare('SELECT u.id, u.username, u.full_name, u.position_title, u.status, u.data_scope, u.province_id, u.cooperative_id, r.code AS role_code, r.name AS role_name, q.organization, q.organization_type, q.requested_role, q.reviewed_at, q.review_note, a.full_name AS reviewer_name FROM users u JOIN roles r ON r.id = u.role_id LEFT JOIN registration_requests q ON q.user_id = u.id LEFT JOIN users a ON a.id = q.reviewed_by WHERE ' . $where . ' ORDER BY u.created_at, u.id LIMIT 20 OFFSET ' . (($userPage - 1) * 20));
 $query->execute($parameters);
 $accountRows = $query->fetchAll();
 $reviewId = isset($_GET['review']) && is_scalar($_GET['review']) ? (int) $_GET['review'] : 0;
@@ -86,7 +118,7 @@ $approvalCooperatives = [];
 $defaultApprovalProvince = '';
 $defaultApprovalCooperative = '';
 if ($reviewId > 0) {
-    $query = $db->prepare("SELECT u.id, u.username, u.full_name, u.email, q.organization, q.organization_type, q.requested_role FROM users u JOIN registration_requests q ON q.user_id = u.id WHERE u.id = ? AND u.status = 'pending' AND q.reviewed_at IS NULL");
+    $query = $db->prepare("SELECT u.id, u.username, u.full_name, q.organization, q.organization_type, q.requested_role FROM users u JOIN registration_requests q ON q.user_id = u.id WHERE u.id = ? AND u.status = 'pending' AND q.reviewed_at IS NULL");
     $query->execute([$reviewId]);
     $reviewRequest = $query->fetch();
     $approvalProvinces = $db->query('SELECT id, name FROM provinces ORDER BY name')->fetchAll();
@@ -110,7 +142,7 @@ $managedAccount = null;
 $managementProvinces = [];
 $managementCooperatives = [];
 if ($manageId > 0) {
-    $query = $db->prepare("SELECT u.id, u.username, u.full_name, u.email, u.status, u.data_scope, u.province_id, u.cooperative_id, r.code AS role_code, r.name AS role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? AND u.status IN ('active', 'suspended')");
+    $query = $db->prepare("SELECT u.id, u.username, u.full_name, u.position_title, u.status, u.data_scope, u.province_id, u.cooperative_id, r.code AS role_code, r.name AS role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? AND u.status IN ('active', 'suspended')");
     $query->execute([$manageId]);
     $managedAccount = $query->fetch() ?: null;
     if ($managedAccount) {

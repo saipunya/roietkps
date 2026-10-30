@@ -1,9 +1,10 @@
 <?php
 $summary = $dashboardData['summary'];
-$pending = array_sum($dashboardData['request_status']['values']) - $summary['approved_requests'];
+$pending = $summary['pending_requests'];
 $overdue = $summary['overdue'];
 $dueSoon = $summary['due_soon'];
 $waitingDocuments = $summary['waiting_documents'];
+$recentLoans = $dashboardData['recent_loans'];
 $stats = [
     ['label' => 'สหกรณ์ในทะเบียน', 'value' => $summary['cooperatives'], 'unit' => 'แห่ง', 'note' => 'ข้อมูลในพื้นที่รับผิดชอบ', 'icon' => 'building', 'tone' => 'green'],
     ['label' => 'วงเงินอนุมัติ', 'value' => number_format($summary['approved_amount'], 2), 'unit' => 'ล้านบาท', 'note' => $summary['approved_requests'] . ' คำขอที่อนุมัติแล้ว', 'icon' => 'check', 'tone' => 'green'],
@@ -38,9 +39,9 @@ $stats = [
   <section class="surface">
     <div class="surface-heading"><div><h2>งานที่ต้องติดตาม</h2><p>เริ่มจากรายการที่ต้องดำเนินการก่อน</p></div><span class="subtle-icon"><?= app_icon('clock') ?></span></div>
     <div class="task-list">
-      <a class="task-item" href="dashboard.php?page=debt&amp;status=<?= e(rawurlencode('ค้างชำระ')) ?>"><span class="task-icon tone-red"><?= app_icon('alert') ?></span><span class="task-copy"><strong>บัญชีค้างชำระ</strong><small>ตรวจสอบและบันทึกผลการติดตาม</small></span><span class="task-count"><?= e($overdue) ?><small>บัญชี</small></span><?= app_icon('chevron') ?></a>
-      <a class="task-item" href="dashboard.php?page=debt&amp;status=<?= e(rawurlencode('ใกล้ครบกำหนด')) ?>"><span class="task-icon tone-amber"><?= app_icon('clock') ?></span><span class="task-copy"><strong>ใกล้ครบกำหนดใน 30 วัน</strong><small>เตรียมติดตามการชำระเงิน</small></span><span class="task-count"><?= e($dueSoon) ?><small>บัญชี</small></span><?= app_icon('chevron') ?></a>
-      <a class="task-item" href="dashboard.php?page=loans&amp;status=<?= e(rawurlencode('รอเอกสาร')) ?>"><span class="task-icon tone-blue"><?= app_icon('document') ?></span><span class="task-copy"><strong>คำขอที่รอเอกสาร</strong><small>ตรวจสอบเอกสารประกอบคำขอ</small></span><span class="task-count"><?= e($waitingDocuments) ?><small>คำขอ</small></span><?= app_icon('chevron') ?></a>
+      <a class="task-item" href="dashboard.php?page=debt&amp;status=overdue"><span class="task-icon tone-red"><?= app_icon('alert') ?></span><span class="task-copy"><strong>บัญชีค้างชำระ</strong><small>ตรวจสอบและบันทึกผลการติดตาม</small></span><span class="task-count"><?= e($overdue) ?><small>บัญชี</small></span><?= app_icon('chevron') ?></a>
+      <a class="task-item" href="dashboard.php?page=debt&amp;status=due_soon"><span class="task-icon tone-amber"><?= app_icon('clock') ?></span><span class="task-copy"><strong>ใกล้ครบกำหนดใน 30 วัน</strong><small>เตรียมติดตามการชำระเงิน</small></span><span class="task-count"><?= e($dueSoon) ?><small>บัญชี</small></span><?= app_icon('chevron') ?></a>
+      <a class="task-item" href="dashboard.php?page=loan-documents"><span class="task-icon tone-blue"><?= app_icon('document') ?></span><span class="task-copy"><strong>คำขอที่รอเอกสาร</strong><small>ตรวจสอบเอกสารประกอบคำขอ</small></span><span class="task-count"><?= e($waitingDocuments) ?><small>คำขอ</small></span><?= app_icon('chevron') ?></a>
     </div>
   </section>
   <section class="surface quick-panel">
@@ -51,6 +52,7 @@ $stats = [
   </section>
 </div>
 
+<?php if ($currentUser): ?>
 <section class="surface recent-section">
   <div class="surface-heading"><div><h2>คำขอเงินกู้ล่าสุด</h2><p>รายการคำขอที่บันทึกล่าสุด</p></div><a class="text-link" href="dashboard.php?page=loans">ดูทั้งหมด <?= app_icon('arrow') ?></a></div>
   <div class="records-wrap">
@@ -58,18 +60,19 @@ $stats = [
       <caption class="visually-hidden">คำขอเงินกู้ล่าสุด</caption>
       <thead><tr><th scope="col">สหกรณ์ / เลขที่คำขอ</th><th scope="col" class="amount-cell">วงเงินที่ขอ (บาท)</th><th scope="col">สถานะ</th><th scope="col"><span class="visually-hidden">รายละเอียด</span></th></tr></thead>
       <tbody>
-        <?php if (!$loans): ?>
+        <?php if (!$recentLoans): ?>
           <tr><td colspan="4" class="text-center text-secondary py-4">ยังไม่มีคำขอเงินกู้</td></tr>
         <?php endif; ?>
-        <?php foreach (array_slice($loans, 0, 4) as $loan): ?>
+        <?php foreach ($recentLoans as $loan): ?>
           <tr>
-            <td class="record-primary"><strong><?= e($cooperatives[$loan['coop']]['name']) ?></strong><small><?= e($loan['id']) ?></small></td>
+            <td class="record-primary"><strong><?= e($loan['organization_name']) ?></strong><small><?= e($loan['application_no']) ?></small></td>
             <td data-label="วงเงินที่ขอ" class="amount-cell"><?= e(number_format($loan['amount'], 2)) ?><span class="mobile-unit"> บาท</span></td>
             <td data-label="สถานะ"><?= status_badge($loan['status']) ?></td>
-            <td class="record-action"><?= detail_button(['เลขที่คำขอ' => $loan['id'], 'สหกรณ์' => $cooperatives[$loan['coop']]['name'], 'วงเงินที่ขอ (บาท)' => number_format($loan['amount'], 2), 'วันที่รับคำขอ' => $loan['date'], 'สถานะ' => $loan['status']]) ?></td>
+            <td class="record-action"><?= detail_button(['เลขที่คำขอ' => $loan['application_no'], 'สหกรณ์' => $loan['organization_name'], 'วงเงินที่ขอ (บาท)' => number_format($loan['amount'], 2), 'วันที่รับคำขอ' => $loan['date'], 'สถานะ' => $loan['status']]) ?></td>
           </tr>
         <?php endforeach; ?>
       </tbody>
     </table>
   </div>
 </section>
+<?php endif; ?>

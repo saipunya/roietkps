@@ -45,6 +45,32 @@ function password_error(string $password): string
     return strlen($password) > 72 || strpos($password, "\0") !== false ? 'รหัสผ่านยาวเกินกำหนดหรือมีอักขระที่ไม่รองรับ' : '';
 }
 
+function random_initial_password(int $length = 8): string
+{
+    if ($length < 8) {
+        $length = 8;
+    }
+    $uppercase = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    $lowercase = 'abcdefghijkmnopqrstuvwxyz';
+    $digits = '23456789';
+    $pool = $uppercase . $lowercase . $digits;
+    $characters = [
+        $uppercase[random_int(0, strlen($uppercase) - 1)],
+        $lowercase[random_int(0, strlen($lowercase) - 1)],
+        $digits[random_int(0, strlen($digits) - 1)],
+    ];
+    while (count($characters) < $length) {
+        $characters[] = $pool[random_int(0, strlen($pool) - 1)];
+    }
+    for ($index = count($characters) - 1; $index > 0; $index--) {
+        $swapIndex = random_int(0, $index);
+        $temporary = $characters[$index];
+        $characters[$index] = $characters[$swapIndex];
+        $characters[$swapIndex] = $temporary;
+    }
+    return implode('', $characters);
+}
+
 function request_roles(): array
 {
     return [
@@ -67,9 +93,15 @@ function assignable_roles(): array
     return [
         'cooperative_user' => 'สหกรณ์ / กลุ่มเกษตรกร',
         'promotion_officer' => 'เจ้าหน้าที่ส่งเสริม',
+        'provincial_director' => 'สหกรณ์จังหวัด',
         'provincial_officer' => 'เจ้าหน้าที่จังหวัด',
         'central_officer' => 'เจ้าหน้าที่ส่วนกลาง',
     ];
+}
+
+function role_is_provincial(string $roleCode): bool
+{
+    return in_array($roleCode, ['provincial_officer', 'provincial_director'], true);
 }
 
 function auth_limit(PDO $db, string $purpose, string $address, int $maximum, int $seconds): bool
@@ -91,8 +123,8 @@ function register_account(PDO $db, array $values, string $password): int
         if (!$role || !array_key_exists($values['requested_role'], request_roles())) {
             throw new RuntimeException('Registration is unavailable.');
         }
-        $query = $db->prepare("INSERT INTO users (username, password_hash, full_name, email, role_id, data_scope, status, must_change_password, password_changed_at) VALUES (?, ?, ?, ?, ?, 'none', 'pending', 0, UTC_TIMESTAMP())");
-        $query->execute([$values['username'], password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]), $values['full_name'], $values['email'], $role]);
+        $query = $db->prepare("INSERT INTO users (username, password_hash, full_name, role_id, data_scope, status, must_change_password, password_changed_at) VALUES (?, ?, ?, ?, 'none', 'pending', 0, UTC_TIMESTAMP())");
+        $query->execute([$values['username'], password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]), $values['full_name'], $role]);
         $id = (int) $db->lastInsertId();
         $query = $db->prepare('INSERT INTO registration_requests (user_id, organization, organization_type, requested_role) VALUES (?, ?, ?, ?)');
         $query->execute([$id, $values['organization'], $values['organization_type'], $values['requested_role']]);
@@ -153,7 +185,7 @@ function current_account(): ?array
         return null;
     }
     $db = app_db();
-    $query = $db->prepare("SELECT u.id, u.username, u.full_name, u.role_id, u.data_scope, u.province_id, u.cooperative_id, u.must_change_password, u.auth_version, r.code AS role_code, r.name AS role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? AND u.status = 'active' AND r.is_active = 1 AND r.code <> 'applicant'");
+    $query = $db->prepare("SELECT u.id, u.username, u.full_name, u.position_title, u.role_id, u.data_scope, u.province_id, u.cooperative_id, u.must_change_password, u.auth_version, r.code AS role_code, r.name AS role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? AND u.status = 'active' AND r.is_active = 1 AND r.code <> 'applicant'");
     $query->execute([$_SESSION['auth_user_id']]);
     $user = $query->fetch();
     if (!$user || (int) $user['auth_version'] !== ($_SESSION['auth_version'] ?? 0)) {
@@ -214,7 +246,7 @@ function review_registration(PDO $db, int $actorId, int $userId, string $decisio
             $query = $db->prepare('SELECT id, data_scope FROM roles WHERE code = ? AND is_active = 1');
             $query->execute([$roleCode]);
             $role = $query->fetch();
-            $expectedScope = ['central_officer' => 'all', 'provincial_officer' => 'province', 'promotion_officer' => 'province', 'cooperative_user' => 'cooperative'];
+            $expectedScope = ['central_officer' => 'all', 'provincial_director' => 'province', 'provincial_officer' => 'province', 'promotion_officer' => 'province', 'cooperative_user' => 'cooperative'];
             if (!$role || $role['data_scope'] !== $expectedScope[$roleCode] || ($role['data_scope'] === 'all' && ($province !== null || $cooperative !== null)) || ($role['data_scope'] === 'province' && (!$province || $cooperative !== null)) || ($role['data_scope'] === 'cooperative' && (!$province || !$cooperative))) {
                 if (!($role && $role['data_scope'] === 'cooperative' && $province && $createOrganization && $cooperative === null)) {
                     throw new DomainException('กรุณากำหนดจังหวัดและหน่วยงานให้ตรงกับบทบาท');
@@ -273,11 +305,96 @@ function review_registration(PDO $db, int $actorId, int $userId, string $decisio
     }
 }
 
+function create_managed_account(PDO $db, int $actorId, array $values, string $password): int
+{
+    $username = trim((string) ($values['username'] ?? ''));
+    $fullName = trim((string) ($values['full_name'] ?? ''));
+    $positionTitle = trim((string) ($values['position_title'] ?? ''));
+    $roleCode = (string) ($values['role_code'] ?? '');
+    $provinceId = filter_var($values['province_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+    $cooperativeId = filter_var($values['cooperative_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+
+    if (!preg_match('/\A[A-Za-z0-9][A-Za-z0-9._-]{3,49}\z/', $username)) {
+        throw new DomainException('ชื่อผู้ใช้งานต้องเป็นภาษาอังกฤษ ตัวเลข . _ หรือ - จำนวน 4–50 ตัวอักษร');
+    }
+    if (mb_strlen($fullName, 'UTF-8') < 2 || mb_strlen($fullName, 'UTF-8') > 150) {
+        throw new DomainException('กรุณากรอกชื่อ–นามสกุลให้ถูกต้อง');
+    }
+    if (!mb_check_encoding($positionTitle, 'UTF-8') || mb_strlen($positionTitle, 'UTF-8') < 2 || mb_strlen($positionTitle, 'UTF-8') > 150) {
+        throw new DomainException('กรุณากรอกตำแหน่ง 2–150 ตัวอักษร');
+    }
+    if (!array_key_exists($roleCode, assignable_roles())) {
+        throw new DomainException('บทบาทที่เลือกไม่ได้รับอนุญาต');
+    }
+    $passwordError = password_error($password);
+    if ($passwordError !== '') {
+        throw new DomainException($passwordError);
+    }
+
+    $db->beginTransaction();
+    try {
+        $admin = $db->prepare("SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id JOIN role_permissions rp ON rp.role_id = r.id JOIN permissions p ON p.id = rp.permission_id WHERE u.id = ? AND u.status = 'active' AND u.must_change_password = 0 AND r.is_active = 1 AND r.code = 'system_admin' AND p.code = 'users.manage' FOR UPDATE");
+        $admin->execute([$actorId]);
+        if (!$admin->fetchColumn()) {
+            throw new DomainException('คุณไม่มีสิทธิ์เพิ่มบัญชีผู้ใช้งาน');
+        }
+
+        $roleQuery = $db->prepare('SELECT id, data_scope FROM roles WHERE code = ? AND is_active = 1');
+        $roleQuery->execute([$roleCode]);
+        $role = $roleQuery->fetch();
+        $expectedScopes = ['central_officer' => 'all', 'provincial_director' => 'province', 'provincial_officer' => 'province', 'promotion_officer' => 'province', 'cooperative_user' => 'cooperative'];
+        if (!$role || $role['data_scope'] !== $expectedScopes[$roleCode]) {
+            throw new DomainException('ขอบเขตของบทบาทไม่ถูกต้อง');
+        }
+
+        if ($role['data_scope'] === 'all') {
+            $provinceId = null;
+            $cooperativeId = null;
+        } elseif ($role['data_scope'] === 'province') {
+            if (!$provinceId) {
+                throw new DomainException('กรุณาเลือกจังหวัดที่รับผิดชอบ');
+            }
+            $province = $db->prepare('SELECT id FROM provinces WHERE id = ?');
+            $province->execute([$provinceId]);
+            if (!$province->fetchColumn()) {
+                throw new DomainException('ไม่พบจังหวัดที่เลือก');
+            }
+            $cooperativeId = null;
+        } else {
+            if (!$cooperativeId) {
+                throw new DomainException('กรุณาเลือกสหกรณ์หรือกลุ่มเกษตรกร');
+            }
+            $cooperative = $db->prepare("SELECT province_id FROM cooperatives WHERE id = ? AND status = 'active'");
+            $cooperative->execute([$cooperativeId]);
+            $organizationProvince = $cooperative->fetchColumn();
+            if (!$organizationProvince) {
+                throw new DomainException('ไม่พบหน่วยงานที่เลือกหรือหน่วยงานถูกระงับ');
+            }
+            $provinceId = (int) $organizationProvince;
+        }
+
+        $insert = $db->prepare("INSERT INTO users (username, password_hash, full_name, position_title, role_id, data_scope, province_id, cooperative_id, status, must_change_password, password_changed_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, UTC_TIMESTAMP(), ?)");
+        $insert->execute([$username, password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]), $fullName, $positionTitle, $role['id'], $role['data_scope'], $provinceId, $cooperativeId, $actorId]);
+        $userId = (int) $db->lastInsertId();
+
+        $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, new_values, ip_hash) VALUES (?, 'account.create', 'user', ?, ?, ?)");
+        $audit->execute([$actorId, $userId, json_encode(['username' => $username, 'full_name' => $fullName, 'position_title' => $positionTitle, 'role' => $roleCode, 'province_id' => $provinceId, 'cooperative_id' => $cooperativeId], JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
+        $db->commit();
+        return $userId;
+    } catch (Throwable $exception) {
+        $db->rollBack();
+        if ($exception instanceof PDOException && isset($exception->errorInfo[1]) && (int) $exception->errorInfo[1] === 1062) {
+            throw new DomainException('ชื่อผู้ใช้งานนี้ถูกใช้แล้ว กรุณาเลือกชื่ออื่น');
+        }
+        throw $exception;
+    }
+}
+
 function update_managed_account(PDO $db, int $actorId, int $userId, array $values): void
 {
     $username = trim((string) ($values['username'] ?? ''));
     $fullName = trim((string) ($values['full_name'] ?? ''));
-    $email = trim((string) ($values['email'] ?? ''));
+    $positionTitle = trim((string) ($values['position_title'] ?? ''));
     $roleCode = (string) ($values['role_code'] ?? '');
     $provinceId = !empty($values['province_id']) ? (int) $values['province_id'] : null;
     $cooperativeId = !empty($values['cooperative_id']) ? (int) $values['cooperative_id'] : null;
@@ -287,8 +404,8 @@ function update_managed_account(PDO $db, int $actorId, int $userId, array $value
     if (!mb_check_encoding($fullName, 'UTF-8') || mb_strlen($fullName, 'UTF-8') < 2 || mb_strlen($fullName, 'UTF-8') > 150) {
         throw new DomainException('กรุณากรอกชื่อ–นามสกุล 2–150 ตัวอักษร');
     }
-    if ($email !== '' && (strlen($email) > 254 || !filter_var($email, FILTER_VALIDATE_EMAIL))) {
-        throw new DomainException('กรุณากรอกอีเมลให้ถูกต้อง');
+    if (!mb_check_encoding($positionTitle, 'UTF-8') || mb_strlen($positionTitle, 'UTF-8') < 2 || mb_strlen($positionTitle, 'UTF-8') > 150) {
+        throw new DomainException('กรุณากรอกตำแหน่ง 2–150 ตัวอักษร');
     }
     if (!array_key_exists($roleCode, assignable_roles())) {
         throw new DomainException('บทบาทที่เลือกไม่ได้รับอนุญาต');
@@ -301,7 +418,7 @@ function update_managed_account(PDO $db, int $actorId, int $userId, array $value
         if (!$admin->fetchColumn() || $actorId === $userId) {
             throw new DomainException('ไม่สามารถแก้ไขบัญชีนี้ได้');
         }
-        $target = $db->prepare('SELECT u.id, u.username, u.full_name, u.email, u.status, u.role_id, u.data_scope, u.province_id, u.cooperative_id, r.code AS role_code FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? FOR UPDATE');
+        $target = $db->prepare('SELECT u.id, u.username, u.full_name, u.position_title, u.status, u.role_id, u.data_scope, u.province_id, u.cooperative_id, r.code AS role_code FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? FOR UPDATE');
         $target->execute([$userId]);
         $account = $target->fetch();
         if (!$account || $account['status'] === 'pending' || $account['role_code'] === 'system_admin' || $account['role_code'] === 'applicant') {
@@ -310,7 +427,7 @@ function update_managed_account(PDO $db, int $actorId, int $userId, array $value
         $roleQuery = $db->prepare('SELECT id, data_scope FROM roles WHERE code = ? AND is_active = 1');
         $roleQuery->execute([$roleCode]);
         $role = $roleQuery->fetch();
-        $expectedScopes = ['central_officer' => 'all', 'provincial_officer' => 'province', 'promotion_officer' => 'province', 'cooperative_user' => 'cooperative'];
+        $expectedScopes = ['central_officer' => 'all', 'provincial_director' => 'province', 'provincial_officer' => 'province', 'promotion_officer' => 'province', 'cooperative_user' => 'cooperative'];
         if (!$role || $role['data_scope'] !== $expectedScopes[$roleCode]) {
             throw new DomainException('ขอบเขตของบทบาทไม่ถูกต้อง');
         }
@@ -339,10 +456,10 @@ function update_managed_account(PDO $db, int $actorId, int $userId, array $value
             }
             $provinceId = (int) $organization['province_id'];
         }
-        $update = $db->prepare('UPDATE users SET username = ?, full_name = ?, email = ?, role_id = ?, data_scope = ?, province_id = ?, cooperative_id = ?, failed_login_attempts = 0, locked_until = NULL, auth_version = auth_version + 1 WHERE id = ?');
-        $update->execute([$username, $fullName, $email === '' ? null : $email, $role['id'], $role['data_scope'], $provinceId, $cooperativeId, $userId]);
-        $oldValues = ['username' => $account['username'], 'full_name' => $account['full_name'], 'email' => $account['email'], 'role' => $account['role_code'], 'province_id' => $account['province_id'], 'cooperative_id' => $account['cooperative_id']];
-        $newValues = ['username' => $username, 'full_name' => $fullName, 'email' => $email === '' ? null : $email, 'role' => $roleCode, 'province_id' => $provinceId, 'cooperative_id' => $cooperativeId];
+        $update = $db->prepare('UPDATE users SET username = ?, full_name = ?, position_title = ?, role_id = ?, data_scope = ?, province_id = ?, cooperative_id = ?, failed_login_attempts = 0, locked_until = NULL, auth_version = auth_version + 1 WHERE id = ?');
+        $update->execute([$username, $fullName, $positionTitle, $role['id'], $role['data_scope'], $provinceId, $cooperativeId, $userId]);
+        $oldValues = ['username' => $account['username'], 'full_name' => $account['full_name'], 'position_title' => $account['position_title'], 'role' => $account['role_code'], 'province_id' => $account['province_id'], 'cooperative_id' => $account['cooperative_id']];
+        $newValues = ['username' => $username, 'full_name' => $fullName, 'position_title' => $positionTitle, 'role' => $roleCode, 'province_id' => $provinceId, 'cooperative_id' => $cooperativeId];
         $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, new_values, ip_hash) VALUES (?, 'account.update', 'user', ?, ?, ?, ?)");
         $audit->execute([$actorId, $userId, json_encode($oldValues, JSON_UNESCAPED_UNICODE), json_encode($newValues, JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
         notification_create($db, $userId, 'account', 'ข้อมูลบัญชีได้รับการแก้ไข', 'ผู้ดูแลระบบปรับปรุงข้อมูลหรือสิทธิ์ของบัญชี กรุณาเข้าสู่ระบบใหม่', 'normal', 'dashboard.php?page=dashboard', 'account:update:' . $userId . ':' . time(), 'user', $userId);

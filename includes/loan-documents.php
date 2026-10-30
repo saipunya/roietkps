@@ -239,7 +239,7 @@ function loan_document_access_row(PDO $db, array $user, int $documentId): ?array
         return null;
     }
     $allowed = ($user['role_code'] === 'cooperative_user' && $user['cooperative_id'] !== null && (int) $user['cooperative_id'] === (int) $document['cooperative_id'])
-        || ($user['role_code'] === 'provincial_officer' && $user['province_id'] !== null && $document['province_id'] !== null && (int) $user['province_id'] === (int) $document['province_id'])
+        || (role_is_provincial($user['role_code']) && $user['province_id'] !== null && $document['province_id'] !== null && (int) $user['province_id'] === (int) $document['province_id'])
         || in_array($user['role_code'], ['system_admin', 'central_officer'], true);
     if ($user['role_code'] === 'promotion_officer') {
         if ((int) $document['assigned_officer_id'] === (int) $user['id']) {

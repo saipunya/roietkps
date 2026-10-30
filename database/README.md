@@ -11,6 +11,9 @@
 7. `007_public_document_pinning.sql` — การปักหมุดเอกสารสำคัญ
 8. `008_loan_document_workflow.sql` — การส่ง แก้ไข และตรวจเอกสารประกอบคำขอกู้
 9. `009_post_approval_tracking.sql` — การบันทึกผลติดตามหลังอนุมัติและสิทธิ์เมนูสัญญา/ติดตามหนี้
+10. `010_provincial_director_and_positions.sql` — เพิ่มประเภทผู้ใช้สหกรณ์จังหวัดและตำแหน่งของผู้ใช้งาน
+11. `011_remove_user_email.sql` — ยกเลิกการเก็บอีเมลในบัญชีผู้ใช้งาน
+12. `012_record_corrections.sql` — รองรับการปลดล็อกคำขอและแก้ไขรายการรับชำระ/ติดตามโดยเก็บประวัติเดิม
 
 ## บทบาท
 
@@ -18,6 +21,7 @@
 | --- | --- | --- |
 | `system_admin` | Admin | จัดการบัญชี ข้อมูลอ้างอิง ปลดล็อก และตรวจประวัติ |
 | `provincial_officer` | เจ้าหน้าที่จังหวัด | ตรวจและอนุมัติคำขอในจังหวัด จัดทำสัญญา และติดตามการชำระ |
+| `provincial_director` | สหกรณ์จังหวัด | กำกับ ตรวจและอนุมัติคำขอ รวมถึงติดตามงานในจังหวัด |
 | `promotion_officer` | เจ้าหน้าที่ส่งเสริม | ดูหน่วยงานที่ได้รับมอบหมาย ตรวจเอกสาร และให้ความเห็น |
 | `cooperative_user` | สหกรณ์/กลุ่มเกษตรกร | จัดการข้อมูลตนเอง สร้างคำขอ อัปโหลดเอกสาร และติดตามสัญญา |
 | `central_officer` | เจ้าหน้าที่ส่วนกลาง | ดูข้อมูลและรายงานทุกพื้นที่ |
@@ -70,6 +74,9 @@ mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/007_public_document_pinning.sql
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/008_loan_document_workflow.sql
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/009_post_approval_tracking.sql
+mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/010_provincial_director_and_positions.sql
+mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/011_remove_user_email.sql
+mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/012_record_corrections.sql
 ```
 
 ตรวจสอบการติดตั้งส่วนติดตามได้ด้วย:
@@ -103,3 +110,7 @@ TEST_DB_USER='test_user' php tests/user_access_schema_test.php
 ```
 
 ให้ปรับ path ของ PHP และโครงการตามค่าจริงบนโฮสต์ คำสั่งนี้ไม่ต้องเปิดผ่านเว็บไซต์
+
+## การล้างข้อมูลทดสอบ
+
+เมื่อเข้าสู่ระบบด้วยบัญชี Admin แล้ว ให้เปิด `/reset-system.php` โดยพิมพ์ URL โดยตรง ระบบจะให้ยืนยันรหัสผ่านปัจจุบันและข้อความ `RESET ROIETKPS` ก่อนล้างข้อมูล คำสั่งนี้จะเก็บบัญชี Admin ที่กำลังใช้งาน บทบาท สิทธิ์ จังหวัด และกฎการแจ้งเตือนไว้ แต่จะลบผู้ใช้อื่น หน่วยงาน คำขอกู้ สัญญา เอกสาร ไฟล์อัปโหลด การแจ้งเตือน และประวัติการทดสอบทั้งหมด

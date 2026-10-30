@@ -39,7 +39,7 @@ function public_document_storage_path(): string
 function public_document_can_publish(?array $user): bool
 {
     return $user !== null
-        && in_array($user['role_code'], ['system_admin', 'provincial_officer'], true)
+        && (in_array($user['role_code'], ['system_admin'], true) || role_is_provincial($user['role_code']))
         && account_can($user, 'public_documents.publish');
 }
 
@@ -221,6 +221,149 @@ function public_document_set_pinned(PDO $db, array $actor, int $documentId, bool
     }
 }
 
+function public_document_update(PDO $db, array $actor, int $documentId, array $values, array $file): void
+{
+    if (!public_document_can_publish($actor) || $documentId < 1) {
+        throw new DomainException('คุณไม่มีสิทธิ์แก้ไขเอกสาร');
+    }
+    $title = trim((string) ($values['title'] ?? ''));
+    $description = trim((string) ($values['description'] ?? ''));
+    $category = (string) ($values['category'] ?? '');
+    if (mb_strlen($title, 'UTF-8') < 3 || mb_strlen($title, 'UTF-8') > 200 || mb_strlen($description, 'UTF-8') > 1000 || !array_key_exists($category, public_document_categories())) {
+        throw new DomainException('กรุณาตรวจสอบหัวข้อ ประเภท และรายละเอียดเอกสาร');
+    }
+
+    $uploadError = isset($file['error']) ? (int) $file['error'] : UPLOAD_ERR_NO_FILE;
+    $replacement = null;
+    if ($uploadError !== UPLOAD_ERR_NO_FILE) {
+        if ($uploadError !== UPLOAD_ERR_OK) {
+            throw new DomainException(public_document_upload_error($uploadError));
+        }
+        $temporaryPath = isset($file['tmp_name']) && is_string($file['tmp_name']) ? $file['tmp_name'] : '';
+        $size = isset($file['size']) ? (int) $file['size'] : 0;
+        if ($temporaryPath === '' || !is_uploaded_file($temporaryPath) || $size < 1 || $size > 20 * 1024 * 1024) {
+            throw new DomainException('ไฟล์ไม่ถูกต้องหรือมีขนาดเกิน 20 MB');
+        }
+        $originalName = public_document_clean_original_name((string) ($file['name'] ?? 'document'));
+        $extension = strtolower((string) pathinfo($originalName, PATHINFO_EXTENSION));
+        $allowedFiles = public_document_allowed_files();
+        if (!isset($allowedFiles[$extension])) {
+            throw new DomainException('รองรับเฉพาะ PDF, Word, Excel, PowerPoint, CSV, TXT และ ZIP');
+        }
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mimeType = (string) $finfo->file($temporaryPath);
+        if (!in_array($mimeType, $allowedFiles[$extension], true)) {
+            throw new DomainException('ชนิดของไฟล์ไม่ตรงกับนามสกุลหรือไม่รองรับ');
+        }
+        $storagePath = public_document_storage_path();
+        if (!is_dir($storagePath) && !mkdir($storagePath, 0750, true) && !is_dir($storagePath)) {
+            throw new RuntimeException('ไม่สามารถเตรียมพื้นที่จัดเก็บเอกสารได้');
+        }
+        $storedName = bin2hex(random_bytes(24)) . '.' . $extension;
+        $destination = $storagePath . DIRECTORY_SEPARATOR . $storedName;
+        if (!move_uploaded_file($temporaryPath, $destination)) {
+            throw new RuntimeException('ไม่สามารถบันทึกไฟล์บนเซิร์ฟเวอร์ได้');
+        }
+        @chmod($destination, 0640);
+        $fileHash = hash_file('sha256', $destination);
+        if (!is_string($fileHash) || strlen($fileHash) !== 64) {
+            @unlink($destination);
+            throw new RuntimeException('ไม่สามารถตรวจสอบความสมบูรณ์ของไฟล์ได้');
+        }
+        $replacement = ['original_name' => $originalName, 'stored_name' => $storedName, 'file_extension' => $extension, 'mime_type' => $mimeType, 'file_size' => $size, 'file_hash' => $fileHash, 'destination' => $destination];
+    }
+
+    $oldStoredName = null;
+    try {
+        $db->beginTransaction();
+        $query = $db->prepare('SELECT * FROM public_documents WHERE id = ? FOR UPDATE');
+        $query->execute([$documentId]);
+        $document = $query->fetch();
+        if (!$document) {
+            throw new DomainException('ไม่พบเอกสารที่ต้องการแก้ไข');
+        }
+        $oldStoredName = $document['stored_name'];
+        if ($replacement) {
+            $query = $db->prepare('UPDATE public_documents SET title = ?, description = ?, category = ?, original_name = ?, stored_name = ?, file_extension = ?, mime_type = ?, file_size = ?, file_hash = ? WHERE id = ?');
+            $query->execute([$title, $description ?: null, $category, $replacement['original_name'], $replacement['stored_name'], $replacement['file_extension'], $replacement['mime_type'], $replacement['file_size'], $replacement['file_hash'], $documentId]);
+        } else {
+            $query = $db->prepare('UPDATE public_documents SET title = ?, description = ?, category = ? WHERE id = ?');
+            $query->execute([$title, $description ?: null, $category, $documentId]);
+        }
+        $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, new_values, ip_hash) VALUES (?, 'public_document.update', 'public_document', ?, ?, ?, ?)");
+        $audit->execute([(int) $actor['id'], $documentId, json_encode(['title' => $document['title'], 'category' => $document['category'], 'original_name' => $document['original_name']], JSON_UNESCAPED_UNICODE), json_encode(['title' => $title, 'category' => $category, 'original_name' => $replacement['original_name'] ?? $document['original_name']], JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
+        $db->commit();
+    } catch (Throwable $exception) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        if ($replacement) {
+            @unlink($replacement['destination']);
+        }
+        throw $exception;
+    }
+    if ($replacement && $oldStoredName && basename($oldStoredName) === $oldStoredName) {
+        @unlink(public_document_storage_path() . DIRECTORY_SEPARATOR . $oldStoredName);
+    }
+}
+
+function public_document_set_published(PDO $db, array $actor, int $documentId, bool $isPublished): void
+{
+    if (!public_document_can_publish($actor) || $documentId < 1) {
+        throw new DomainException('คุณไม่มีสิทธิ์เปลี่ยนสถานะเอกสาร');
+    }
+    $db->beginTransaction();
+    try {
+        $query = $db->prepare('SELECT id, title, is_published FROM public_documents WHERE id = ? FOR UPDATE');
+        $query->execute([$documentId]);
+        $document = $query->fetch();
+        if (!$document) {
+            throw new DomainException('ไม่พบเอกสารที่เลือก');
+        }
+        $query = $db->prepare('UPDATE public_documents SET is_published = ?, published_at = IF(? = 1, UTC_TIMESTAMP(), published_at), is_pinned = IF(? = 1, is_pinned, 0), pinned_at = IF(? = 1, pinned_at, NULL), pinned_by = IF(? = 1, pinned_by, NULL) WHERE id = ?');
+        $publishedValue = $isPublished ? 1 : 0;
+        $query->execute([$publishedValue, $publishedValue, $publishedValue, $publishedValue, $publishedValue, $documentId]);
+        $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, new_values, ip_hash) VALUES (?, ?, 'public_document', ?, ?, ?, ?)");
+        $audit->execute([(int) $actor['id'], $isPublished ? 'public_document.publish' : 'public_document.unpublish', $documentId, json_encode(['is_published' => (int) $document['is_published']]), json_encode(['is_published' => $publishedValue]), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
+        $db->commit();
+    } catch (Throwable $exception) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        throw $exception;
+    }
+}
+
+function public_document_delete(PDO $db, array $actor, int $documentId): void
+{
+    if (!public_document_can_publish($actor) || $documentId < 1) {
+        throw new DomainException('คุณไม่มีสิทธิ์ลบเอกสาร');
+    }
+    $storedName = null;
+    $db->beginTransaction();
+    try {
+        $query = $db->prepare('SELECT * FROM public_documents WHERE id = ? AND is_published = 0 FOR UPDATE');
+        $query->execute([$documentId]);
+        $document = $query->fetch();
+        if (!$document) {
+            throw new DomainException('ต้องยกเลิกเผยแพร่เอกสารก่อนจึงจะลบได้');
+        }
+        $storedName = $document['stored_name'];
+        $db->prepare('DELETE FROM public_documents WHERE id = ?')->execute([$documentId]);
+        $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, ip_hash) VALUES (?, 'public_document.delete', 'public_document', ?, ?, ?)");
+        $audit->execute([(int) $actor['id'], $documentId, json_encode(['title' => $document['title'], 'original_name' => $document['original_name']], JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
+        $db->commit();
+    } catch (Throwable $exception) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        throw $exception;
+    }
+    if ($storedName && basename($storedName) === $storedName) {
+        @unlink(public_document_storage_path() . DIRECTORY_SEPARATOR . $storedName);
+    }
+}
+
 if (defined('PUBLIC_DOCUMENTS_LIBRARY_ONLY')) {
     return;
 }
@@ -254,6 +397,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'category' => post_text('category'),
                 ], isset($_FILES['document_file']) && is_array($_FILES['document_file']) ? $_FILES['document_file'] : []);
                 $_SESSION['public_document_notice'] = 'เผยแพร่เอกสารเรียบร้อยแล้ว';
+            } elseif ($operation === 'update_public_document') {
+                $documentId = filter_var(post_text('document_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+                public_document_update($db, $currentUser, $documentId, [
+                    'title' => post_text('title'),
+                    'description' => post_text('description'),
+                    'category' => post_text('category'),
+                ], isset($_FILES['document_file']) && is_array($_FILES['document_file']) ? $_FILES['document_file'] : []);
+                $_SESSION['public_document_notice'] = 'แก้ไขข้อมูลเอกสารเรียบร้อยแล้ว';
             } elseif ($operation === 'toggle_public_document_pin') {
                 $documentId = filter_var(post_text('document_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
                 $pinAction = post_text('pin_action');
@@ -262,6 +413,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 public_document_set_pinned($db, $currentUser, (int) $documentId, $pinAction === 'pin');
                 $_SESSION['public_document_notice'] = $pinAction === 'pin' ? 'ปักหมุดเอกสารแล้ว' : 'ยกเลิกปักหมุดเอกสารแล้ว';
+            } elseif ($operation === 'set_public_document_published') {
+                $documentId = filter_var(post_text('document_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+                $publishAction = post_text('publish_action');
+                if (!$documentId || !in_array($publishAction, ['publish', 'unpublish'], true)) {
+                    throw new DomainException('ข้อมูลสถานะเอกสารไม่ถูกต้อง');
+                }
+                public_document_set_published($db, $currentUser, $documentId, $publishAction === 'publish');
+                $_SESSION['public_document_notice'] = $publishAction === 'publish' ? 'เผยแพร่เอกสารอีกครั้งแล้ว' : 'ยกเลิกเผยแพร่เอกสารแล้ว';
+            } elseif ($operation === 'delete_public_document') {
+                $documentId = filter_var(post_text('document_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+                public_document_delete($db, $currentUser, $documentId);
+                $_SESSION['public_document_notice'] = 'ลบเอกสารและไฟล์ออกจากระบบแล้ว';
             } else {
                 throw new DomainException('ไม่พบคำสั่งที่ต้องการดำเนินการ');
             }
@@ -280,10 +443,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $documentSearch = isset($_GET['q']) && is_string($_GET['q']) ? mb_substr(trim($_GET['q']), 0, 100, 'UTF-8') : '';
 $documentCategory = isset($_GET['category']) && is_string($_GET['category']) && array_key_exists($_GET['category'], public_document_categories()) ? $_GET['category'] : '';
+$documentStatus = $canPublishDocuments && isset($_GET['status']) && in_array($_GET['status'], ['published', 'unpublished'], true) ? $_GET['status'] : '';
 $documentPage = isset($_GET['p']) ? max(1, (int) $_GET['p']) : 1;
 $documentsPerPage = 20;
-$documentWhere = ['d.is_published = 1'];
+$documentWhere = [$canPublishDocuments ? '1 = 1' : 'd.is_published = 1'];
 $documentParameters = [];
+if ($documentStatus !== '') {
+    $documentWhere[] = 'd.is_published = ?';
+    $documentParameters[] = $documentStatus === 'published' ? 1 : 0;
+}
 if ($documentSearch !== '') {
     $documentWhere[] = '(d.title LIKE ? OR d.description LIKE ? OR d.original_name LIKE ?)';
     $term = '%' . $documentSearch . '%';
@@ -301,9 +469,16 @@ $documentPageCount = max(1, (int) ceil($documentTotal / $documentsPerPage));
 $documentPage = min($documentPage, $documentPageCount);
 $documentOffset = ($documentPage - 1) * $documentsPerPage;
 $documentListQuery = $db->prepare(
-    'SELECT d.id, d.title, d.description, d.category, d.original_name, d.file_extension, d.file_size, d.download_count, d.is_pinned, d.pinned_at, d.published_at, u.full_name AS uploader_name '
+    'SELECT d.id, d.title, d.description, d.category, d.original_name, d.file_extension, d.file_size, d.download_count, d.is_published, d.is_pinned, d.pinned_at, d.published_at, u.full_name AS uploader_name '
     . 'FROM public_documents d JOIN users u ON u.id = d.uploaded_by '
     . "WHERE {$documentWhereSql} ORDER BY d.is_pinned DESC, COALESCE(d.pinned_at, d.published_at) DESC, d.published_at DESC, d.id DESC LIMIT {$documentsPerPage} OFFSET {$documentOffset}"
 );
 $documentListQuery->execute($documentParameters);
 $publicDocuments = $documentListQuery->fetchAll();
+$editingPublicDocument = null;
+if ($canPublishDocuments && isset($_GET['edit']) && is_scalar($_GET['edit'])) {
+    $editDocumentId = (int) $_GET['edit'];
+    $query = $db->prepare('SELECT * FROM public_documents WHERE id = ?');
+    $query->execute([$editDocumentId]);
+    $editingPublicDocument = $query->fetch() ?: null;
+}
