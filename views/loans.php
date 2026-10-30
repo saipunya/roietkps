@@ -14,8 +14,6 @@ $contractStatuses = [
     'awaiting_signature' => 'รอลงนาม', 'signed' => 'ลงนามแล้ว', 'pending_disbursement' => 'รอเบิกจ่าย',
     'active' => 'อยู่ระหว่างสัญญา', 'completed' => 'ชำระครบ', 'closed' => 'ปิดสัญญา', 'cancelled' => 'ยกเลิก',
 ];
-$loanDocumentTypes = loan_document_types();
-$loanDocumentStatuses = loan_document_statuses();
 $showLoanForm = $currentUser['role_code'] === 'cooperative_user' && ($newLoan || ($loanEditId && $selectedLoan && in_array($selectedLoan['status'], ['draft', 'revision_requested'], true)));
 $formLoan = $selectedLoan ?: [];
 $formGuarantors = $loanGuarantors ?: [['full_name' => '', 'relationship' => '', 'phone' => '', 'guarantee_amount' => '']];
@@ -58,59 +56,20 @@ $formGuarantors = $loanGuarantors ?: [['full_name' => '', 'relationship' => '', 
 <section class="surface loan-detail-panel mb-4">
   <div class="surface-heading"><div><h2><?= e($selectedLoan['application_no']) ?></h2><p><?= e($selectedLoan['organization_name']) ?></p></div><a class="text-link" href="dashboard.php?page=loans">ปิด</a></div>
   <div class="loan-detail-body">
-    <div class="loan-status-line"><span class="status-badge status-<?= $selectedLoan['status'] === 'approved' ? 'success' : ($selectedLoan['status'] === 'revision_requested' || $selectedLoan['status'] === 'rejected' ? 'danger' : 'warning') ?>"><?= e($loanStatuses[$selectedLoan['status']] ?? $selectedLoan['status']) ?></span><?php if ($selectedLoan['contract_status']): ?><span class="status-badge status-neutral">สัญญา: <?= e($contractStatuses[$selectedLoan['contract_status']] ?? $selectedLoan['contract_status']) ?></span><?php endif; ?></div>
+    <div class="loan-status-line"><span class="status-badge status-<?= $selectedLoan['status'] === 'approved' ? 'success' : ($selectedLoan['status'] === 'revision_requested' || $selectedLoan['status'] === 'rejected' ? 'danger' : 'warning') ?>"><?= e($loanStatuses[$selectedLoan['status']] ?? $selectedLoan['status']) ?></span><?php if ($selectedLoan['contract_status']): ?><span class="status-badge status-neutral">สัญญา: <?= e($contractStatuses[$selectedLoan['contract_status']] ?? $selectedLoan['contract_status']) ?></span><?php endif; ?><?php if ($selectedLoan['contract_id']): ?><a class="btn btn-sm btn-outline-primary" href="dashboard.php?page=contracts&amp;contract=<?= (int) $selectedLoan['contract_id'] ?>"><?= app_icon('file-check') ?> ดูสัญญา</a><?php endif; ?></div>
     <dl class="loan-detail-grid"><div><dt>วัตถุประสงค์</dt><dd><?= e($selectedLoan['purpose']) ?></dd></div><div><dt>วงเงินที่ขอ</dt><dd><?= e(number_format((float) $selectedLoan['requested_amount'], 2)) ?> บาท</dd></div><div><dt>อัตราดอกเบี้ยที่เสนอ</dt><dd><?= e(number_format((float) $selectedLoan['proposed_interest_rate'], 4)) ?>%</dd></div><div><dt>ระยะเวลา</dt><dd><?= (int) $selectedLoan['term_months'] ?> เดือน</dd></div><div><dt>เจ้าหน้าที่ส่งเสริม</dt><dd><?= e($selectedLoan['officer_name'] ?? 'รอมอบหมาย') ?></dd></div><div><dt>หลักประกัน</dt><dd><?= e($selectedLoan['collateral'] ?? '—') ?></dd></div><?php if ($selectedLoan['approved_amount'] !== null): ?><div><dt>วงเงินอนุมัติ</dt><dd><?= e(number_format((float) $selectedLoan['approved_amount'], 2)) ?> บาท</dd></div><div><dt>อัตราดอกเบี้ยอนุมัติ</dt><dd><?= e(number_format((float) $selectedLoan['approved_interest_rate'], 4)) ?>%</dd></div><?php endif; ?></dl>
 
     <div class="loan-subsection"><h3>ผู้ค้ำประกัน</h3><?php if (!$loanGuarantors): ?><p class="text-secondary">ยังไม่ได้ระบุผู้ค้ำประกัน</p><?php else: ?><div class="guarantor-summary"><?php foreach ($loanGuarantors as $guarantor): ?><div><strong><?= e($guarantor['full_name']) ?></strong><span><?= e($guarantor['relationship'] ?? 'ไม่ระบุความสัมพันธ์') ?><?= $guarantor['guarantee_amount'] !== null ? ' · ' . number_format((float) $guarantor['guarantee_amount'], 2) . ' บาท' : '' ?></span></div><?php endforeach; ?></div><?php endif; ?></div>
 
-    <div class="loan-subsection loan-document-section">
-      <div class="form-section-heading"><div><h3>เอกสารประกอบคำขอกู้</h3><p>ไฟล์ส่วนตัวสำหรับผู้ยื่นและเจ้าหน้าที่ผู้รับผิดชอบ</p></div><span class="loan-document-count"><?= count($loanDocuments) ?> ฉบับ</span></div>
-
-      <?php if ($currentUser['role_code'] === 'cooperative_user' && in_array($selectedLoan['status'], ['draft', 'revision_requested'], true)): ?>
-      <?php $revisionDocuments = array_values(array_filter($loanDocuments, static function ($document) { return $document['status'] === 'needs_revision' && (int) $document['has_newer'] === 0; })); ?>
-      <form class="loan-document-upload-form" action="dashboard.php?page=loans&amp;view=<?= (int) $selectedLoan['id'] ?>" method="post" enctype="multipart/form-data">
-        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="upload_loan_document"><input type="hidden" name="application_id" value="<?= (int) $selectedLoan['id'] ?>"><input type="hidden" name="MAX_FILE_SIZE" value="20971520">
-        <?php if ($revisionDocuments): ?><div class="auth-field loan-document-replacement-field"><label class="form-label" for="replacementDocument">อัปโหลดแทนเอกสารที่ถูกส่งกลับ <span class="text-secondary">(ถ้ามี)</span></label><select class="form-select" id="replacementDocument" name="replaces_document_id"><option value="">เป็นเอกสารฉบับใหม่</option><?php foreach ($revisionDocuments as $revisionDocument): ?><option value="<?= (int) $revisionDocument['id'] ?>"><?= e($revisionDocument['title']) ?> — <?= e($revisionDocument['review_note'] ?? 'กรุณาแก้ไข') ?></option><?php endforeach; ?></select><div class="form-text">เมื่อเลือกฉบับส่งกลับ ระบบจะใช้ชื่อและประเภทเอกสารเดิม</div></div><?php endif; ?>
-        <div class="loan-document-upload-grid">
-          <div class="auth-field"><label class="form-label" for="loanDocumentType">ประเภทเอกสาร</label><select class="form-select" id="loanDocumentType" name="document_type" required><option value="">โปรดเลือก</option><?php foreach ($loanDocumentTypes as $typeCode => $typeLabel): ?><option value="<?= e($typeCode) ?>"><?= e($typeLabel) ?></option><?php endforeach; ?></select></div>
-          <div class="auth-field"><label class="form-label" for="loanDocumentTitle">ชื่อเอกสาร</label><input class="form-control" type="text" id="loanDocumentTitle" name="document_title" minlength="3" maxlength="200" required></div>
-          <div class="auth-field loan-document-file-field"><label class="form-label" for="loanDocumentFile">เลือกไฟล์</label><input class="form-control" type="file" id="loanDocumentFile" name="loan_document_file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip" required><div class="form-text">PDF, Word, Excel, JPG, PNG หรือ ZIP ขนาดไม่เกิน 20 MB</div></div>
-        </div>
-        <div class="form-actions"><button class="btn btn-primary" type="submit"><?= app_icon('upload') ?> อัปโหลดเอกสาร</button></div>
-      </form>
-      <?php endif; ?>
-
-      <?php if (!$loanDocuments): ?>
-      <div class="loan-document-empty"><?= app_icon('file') ?><p>ยังไม่มีเอกสารประกอบคำขอกู้</p></div>
-      <?php else: ?>
-      <div class="loan-document-list">
-        <?php foreach ($loanDocuments as $document): ?>
-        <?php $documentIsPrevious = (int) $document['has_newer'] === 1; $documentStatusTone = $documentIsPrevious ? 'neutral' : ($document['status'] === 'verified' ? 'success' : ($document['status'] === 'needs_revision' ? 'danger' : 'warning')); ?>
-        <article class="loan-document-row<?= $documentIsPrevious ? ' is-previous' : '' ?>">
-          <span class="loan-document-file-icon" aria-hidden="true"><?= app_icon('file') ?></span>
-          <div class="loan-document-copy">
-            <div class="loan-document-title"><h4><?= e($document['title']) ?></h4><span class="status-badge status-<?= e($documentStatusTone) ?>"><?= $documentIsPrevious ? 'ฉบับก่อนหน้า' : e($loanDocumentStatuses[$document['status']] ?? $document['status']) ?></span></div>
-            <p><?= e($loanDocumentTypes[$document['document_type']] ?? 'เอกสารอื่น ๆ') ?> · <?= e($document['original_name']) ?> · <?= e(loan_document_format_size((int) $document['file_size'])) ?></p>
-            <small>อัปโหลดโดย <?= e($document['uploader_name']) ?> · <?= e(loan_document_date($document['created_at'])) ?></small>
-            <?php if (!$documentIsPrevious && $document['review_note']): ?><div class="loan-document-review-note"><strong><?= $document['status'] === 'needs_revision' ? 'เหตุผลที่ส่งกลับ' : 'ความเห็นผู้ตรวจ' ?></strong><p><?= e($document['review_note']) ?></p><?php if ($document['reviewer_name']): ?><small><?= e($document['reviewer_name']) ?> · <?= e(loan_document_date($document['reviewed_at'])) ?></small><?php endif; ?></div><?php endif; ?>
-          </div>
-          <div class="loan-document-actions">
-            <a class="btn btn-outline-primary" href="loan-document-download.php?id=<?= (int) $document['id'] ?>"><?= app_icon('download') ?> ดาวน์โหลด</a>
-          </div>
-          <?php if (!$documentIsPrevious && $document['status'] === 'uploaded' && $currentUser['role_code'] === 'promotion_officer' && in_array($selectedLoan['status'], ['submitted', 'promotion_review'], true) && (int) $selectedLoan['assigned_officer_id'] === (int) $currentUser['id']): ?>
-          <form class="loan-document-review-form" action="dashboard.php?page=loans&amp;view=<?= (int) $selectedLoan['id'] ?>" method="post">
-            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="review_loan_document"><input type="hidden" name="application_id" value="<?= (int) $selectedLoan['id'] ?>"><input type="hidden" name="document_id" value="<?= (int) $document['id'] ?>">
-            <label class="form-label" for="documentReviewNote<?= (int) $document['id'] ?>">ความเห็น/เหตุผลที่ต้องแก้ไข</label><textarea class="form-control" id="documentReviewNote<?= (int) $document['id'] ?>" name="document_review_note" rows="2" maxlength="1000"></textarea>
-            <div class="form-actions"><button class="btn btn-outline-danger" type="submit" name="document_decision" value="needs_revision"><?= app_icon('alert') ?> ส่งกลับแก้ไข</button><button class="btn btn-primary" type="submit" name="document_decision" value="verified"><?= app_icon('check') ?> ผ่านการตรวจ</button></div>
-          </form>
-          <?php endif; ?>
-        </article>
-        <?php endforeach; ?>
+    <div class="loan-subsection loan-document-summary">
+      <div class="loan-document-summary-copy">
+        <span class="loan-document-summary-icon" aria-hidden="true"><?= app_icon('folder') ?></span>
+        <div><h3>เอกสารคำขอกู้</h3><p>เอกสารถูกแยกไปจัดการในรายการเฉพาะ เพื่อไม่ให้ปะปนกับการแก้ไขข้อมูลคำขอ</p><div class="loan-document-summary-counts"><span>ปัจจุบัน <strong><?= (int) $selectedLoan['current_document_count'] ?></strong></span><span>รอตรวจ <strong><?= (int) $selectedLoan['uploaded_document_count'] ?></strong></span><span>ต้องแก้ไข <strong><?= (int) $selectedLoan['revision_document_count'] ?></strong></span><span>ผ่านแล้ว <strong><?= (int) $selectedLoan['verified_document_count'] ?></strong></span></div></div>
       </div>
-      <?php endif; ?>
+      <a class="btn btn-outline-primary" href="dashboard.php?page=loan-documents&amp;loan=<?= (int) $selectedLoan['id'] ?>"><?= app_icon('folder') ?> จัดการเอกสาร</a>
     </div>
 
-    <?php if ($currentUser['role_code'] === 'cooperative_user' && in_array($selectedLoan['status'], ['draft', 'revision_requested'], true)): ?><div class="form-actions"><a class="btn btn-outline-primary" href="dashboard.php?page=loans&amp;edit=<?= (int) $selectedLoan['id'] ?>">แก้ไขข้อมูล</a><form action="dashboard.php?page=loans&amp;view=<?= (int) $selectedLoan['id'] ?>" method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="submit_application"><input type="hidden" name="application_id" value="<?= (int) $selectedLoan['id'] ?>"><button class="btn btn-primary" type="submit"><?= app_icon('arrow') ?> ส่งให้เจ้าหน้าที่ตรวจสอบ</button></form></div><?php endif; ?>
+    <?php if ($currentUser['role_code'] === 'cooperative_user' && in_array($selectedLoan['status'], ['draft', 'revision_requested'], true)): ?><div class="form-actions"><a class="btn btn-outline-primary" href="dashboard.php?page=loans&amp;edit=<?= (int) $selectedLoan['id'] ?>">แก้ไขข้อมูลคำขอ</a><form action="dashboard.php?page=loans&amp;view=<?= (int) $selectedLoan['id'] ?>" method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="submit_application"><input type="hidden" name="application_id" value="<?= (int) $selectedLoan['id'] ?>"><button class="btn btn-primary" type="submit"><?= app_icon('arrow') ?> <?= $selectedLoan['status'] === 'revision_requested' ? 'ส่งให้เจ้าหน้าที่ตรวจสอบอีกครั้ง' : 'ส่งให้เจ้าหน้าที่ตรวจสอบ' ?></button></form></div><?php endif; ?>
 
     <?php if ($currentUser['role_code'] === 'promotion_officer' && in_array($selectedLoan['status'], ['submitted', 'promotion_review'], true) && (int) $selectedLoan['assigned_officer_id'] === (int) $currentUser['id']): ?><form class="review-decision-form" action="dashboard.php?page=loans&amp;view=<?= (int) $selectedLoan['id'] ?>" method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="promotion_review"><input type="hidden" name="application_id" value="<?= (int) $selectedLoan['id'] ?>"><label class="form-label" for="promotionComment">ความเห็นของเจ้าหน้าที่ส่งเสริม</label><textarea class="form-control" id="promotionComment" name="review_comment" rows="4" maxlength="2000" required></textarea><div class="form-actions"><button class="btn btn-outline-danger" name="decision" value="request_revision" type="submit">ส่งกลับแก้ไข</button><button class="btn btn-primary" name="decision" value="forward" type="submit"><?= app_icon('arrow') ?> ส่งให้จังหวัดตรวจสอบ</button></div></form><?php endif; ?>
 

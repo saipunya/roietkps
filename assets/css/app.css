@@ -712,8 +712,24 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
 }
 
 /* Private documents attached to loan applications. */
+.loan-document-summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px; border: 1px solid #dbe7e0; border-radius: 12px; background: #f8fbf9; }
+.loan-document-summary-copy { display: flex; align-items: flex-start; gap: 13px; min-width: 0; }
+.loan-document-summary-copy h3 { margin: 0; }
+.loan-document-summary-copy p { margin: 3px 0 9px; color: var(--muted); }
+.loan-document-summary-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 42px; width: 42px; height: 42px; border-radius: 11px; color: var(--primary); background: #eaf3ee; font-size: 19px; }
+.loan-document-summary-counts { display: flex; flex-wrap: wrap; gap: 7px; }
+.loan-document-summary-counts span { padding: 4px 9px; border-radius: 999px; color: #496459; background: #eef5f1; font-size: 12px; }
+.loan-document-context { display: grid; grid-template-columns: minmax(150px, .55fr) minmax(220px, 1.45fr) auto; align-items: center; gap: 14px; margin-bottom: 20px; padding: 14px 16px; border: 1px solid #dbe7e0; border-radius: 11px; background: #f8fbf9; }
+.loan-document-context > div { display: grid; gap: 2px; min-width: 0; }
+.loan-document-context strong { overflow-wrap: anywhere; }
+.loan-document-context-label { color: var(--muted); font-size: 12px; }
+.loan-document-workspace-actions { justify-content: space-between; padding-top: 18px; border-top: 1px solid #e3ebe7; }
 .loan-document-section .form-section-heading { margin-top: 0; }
 .loan-document-count { display: inline-flex; align-items: center; min-height: 30px; padding: 4px 10px; border-radius: 999px; color: #345f4e; background: #eaf3ee; font-size: 12px; font-weight: 600; }
+.loan-document-revision-alert { display: flex; align-items: flex-start; gap: 11px; margin: 14px 0 0; }
+.loan-document-revision-alert .app-icon { flex: 0 0 auto; margin-top: 3px; }
+.loan-document-revision-alert strong { display: block; }
+.loan-document-revision-alert p { margin: 2px 0 0; }
 .loan-document-upload-form { margin: 14px 0 20px; padding: 18px; border: 1px solid #dbe7e0; border-radius: 12px; background: #f8fbf9; }
 .loan-document-upload-grid { display: grid; grid-template-columns: minmax(190px, .8fr) minmax(260px, 1.2fr); gap: 14px; }
 .loan-document-file-field { grid-column: 1 / -1; }
@@ -736,24 +752,105 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
 .loan-document-review-note strong { color: #8e413c; font-size: 12px; }
 .loan-document-review-note p { margin: 3px 0; font-size: 13px; }
 .loan-document-review-note small { color: #7a6c68; font-size: 11px; }
+.loan-document-revision-form { grid-column: 2 / -1; margin-top: 3px; padding: 14px; border: 1px solid #ead7b5; border-radius: 9px; background: #fffaf0; }
+.loan-document-revision-form .form-actions { margin-top: 11px; }
 .loan-document-review-form { grid-column: 2 / -1; margin-top: 3px; padding: 14px; border: 1px solid #dce7e1; border-radius: 9px; background: #f8fbf9; }
 .loan-document-review-form .form-actions { margin-top: 11px; }
 .loan-document-empty { display: flex; align-items: center; gap: 9px; margin-top: 12px; padding: 20px; border: 1px dashed #cfddd5; border-radius: 10px; color: var(--muted); background: #fafcfb; }
 .loan-document-empty p { margin: 0; }
 
 @media (max-width: 767.98px) {
+  .loan-document-summary { align-items: stretch; flex-direction: column; }
+  .loan-document-summary > .btn { align-self: flex-start; }
+  .loan-document-context { grid-template-columns: 1fr; }
+  .loan-document-context .btn { justify-self: start; }
   .loan-document-upload-grid { grid-template-columns: 1fr; }
   .loan-document-file-field { grid-column: auto; }
   .loan-document-row { grid-template-columns: auto minmax(0, 1fr); }
   .loan-document-actions { grid-column: 2; justify-content: flex-start; }
-  .loan-document-review-form { grid-column: 1 / -1; }
+  .loan-document-revision-form, .loan-document-review-form { grid-column: 1 / -1; }
 }
 
 @media (max-width: 575.98px) {
+  .loan-document-summary-copy { flex-direction: column; }
+  .loan-document-summary > .btn, .loan-document-context .btn { width: 100%; }
+  .loan-document-workspace-actions { align-items: stretch; flex-direction: column; }
+  .loan-document-workspace-actions .btn { width: 100%; }
   .loan-document-upload-form { padding: 15px; }
   .loan-document-row { grid-template-columns: 1fr; padding: 15px; }
-  .loan-document-actions, .loan-document-review-form { grid-column: auto; }
+  .loan-document-actions, .loan-document-revision-form, .loan-document-review-form { grid-column: auto; }
   .loan-document-actions, .loan-document-actions .btn { width: 100%; }
+  .loan-document-revision-form .form-actions,
   .loan-document-review-form .form-actions { align-items: stretch; flex-direction: column; }
+  .loan-document-revision-form .btn,
   .loan-document-review-form .btn { width: 100%; }
+}
+
+/* Post-approval contract and repayment tracking. */
+.tracking-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 22px; }
+.tracking-summary-card { display: flex; align-items: center; gap: 14px; min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: 0 7px 24px rgba(42, 70, 56, .05); }
+.tracking-summary-card > div { min-width: 0; }
+.tracking-summary-card small { display: block; color: var(--muted); font-size: 13px; }
+.tracking-summary-card strong { display: block; margin-top: 3px; color: #253a30; font-size: clamp(20px, 2vw, 27px); font-weight: 650; line-height: 1.25; overflow-wrap: anywhere; }
+.tracking-summary-card strong span { color: var(--muted); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.tracking-summary-icon { display: grid; place-items: center; flex: 0 0 46px; width: 46px; height: 46px; border-radius: 12px; }
+.tracking-summary-icon .app-icon { font-size: 21px; }
+.tracking-detail-panel { overflow: hidden; }
+.tracking-detail-body { padding: 4px 24px 26px; }
+.tracking-heading { align-items: flex-start; border-bottom: 1px solid var(--line); }
+.tracking-heading-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.tracking-heading-actions .btn { min-height: 39px; padding: 6px 12px; font-size: 13px; }
+.tracking-contract-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tracking-contract-grid > div:first-child { grid-column: auto; }
+.tracking-form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 15px; }
+.tracking-form-grid.compact { grid-template-columns: minmax(260px, 420px); }
+.tracking-form-grid.schedule-grid { grid-template-columns: .55fr 1fr repeat(3, 1fr); }
+.tracking-form-grid.payment-grid, .tracking-form-grid.follow-up-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.tracking-wide-field { grid-column: span 2; }
+.tracking-first-section { margin-top: 10px; padding-top: 18px; }
+.tracking-table-wrap { margin-top: 13px; overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.tracking-table { min-width: 760px; }
+.tracking-table th { color: #50665b; background: #f5f8f6; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.tracking-table td { vertical-align: middle; font-size: 13px; }
+.tracking-table .amount-cell { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tracking-history-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.tracking-history-list { display: grid; gap: 10px; margin-top: 13px; }
+.tracking-history-list article { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 11px; padding: 14px; border: 1px solid #e1e9e4; border-radius: 10px; background: #fff; }
+.tracking-history-list article > div { min-width: 0; }
+.tracking-history-list strong, .tracking-history-list small { display: block; }
+.tracking-history-list strong { font-size: 15px; }
+.tracking-history-list small { margin-top: 2px; color: var(--muted); font-size: 11px; }
+.tracking-history-list p { margin: 7px 0 0; color: #465c51; font-size: 13px; overflow-wrap: anywhere; }
+.tracking-history-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 9px; }
+.tracking-history-icon .app-icon { font-size: 16px; }
+
+@media (max-width: 1199.98px) {
+  .tracking-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tracking-form-grid, .tracking-form-grid.payment-grid, .tracking-form-grid.follow-up-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tracking-form-grid.schedule-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 767.98px) {
+  .tracking-detail-body { padding-right: 18px; padding-left: 18px; }
+  .tracking-heading { flex-direction: column; }
+  .tracking-heading-actions { justify-content: flex-start; width: 100%; }
+  .tracking-contract-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tracking-form-grid.schedule-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tracking-history-grid { grid-template-columns: 1fr; gap: 0; }
+}
+
+@media (max-width: 575.98px) {
+  .tracking-summary-grid { grid-template-columns: 1fr; gap: 10px; }
+  .tracking-summary-card { padding: 15px; }
+  .tracking-detail-body { padding-right: 16px; padding-left: 16px; }
+  .tracking-heading-actions, .tracking-heading-actions .btn { width: 100%; }
+  .tracking-heading-actions .text-link { padding: 8px 0; }
+  .tracking-contract-grid,
+  .tracking-form-grid,
+  .tracking-form-grid.compact,
+  .tracking-form-grid.schedule-grid,
+  .tracking-form-grid.payment-grid,
+  .tracking-form-grid.follow-up-grid { grid-template-columns: 1fr; }
+  .tracking-wide-field { grid-column: auto; }
+  .tracking-table { min-width: 690px; }
 }

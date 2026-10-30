@@ -3,16 +3,7 @@ require_once __DIR__ . '/includes/ui.php';
 require_once __DIR__ . '/includes/accounts.php';
 require __DIR__ . '/includes/data.php';
 
-$pages = [
-    'dashboard' => ['title' => 'แดชบอร์ด', 'description' => 'สรุปงานและรายการที่คุณควรดำเนินการ', 'icon' => 'dashboard', 'permission' => 'dashboard.view'],
-    'registry' => ['title' => 'ทะเบียนสหกรณ์', 'description' => 'ค้นหาข้อมูลสหกรณ์และพื้นที่รับผิดชอบ', 'icon' => 'building', 'permission' => 'cooperatives.view'],
-    'loans' => ['title' => 'ทะเบียนเงินกู้', 'description' => 'ติดตามคำขอกู้และผลการพิจารณาในที่เดียว', 'icon' => 'document', 'permission' => 'loans.view'],
-    'debt' => ['title' => 'ติดตามหนี้', 'description' => 'ตรวจสอบกำหนดชำระและรายการที่ต้องติดตาม', 'icon' => 'clock', 'permission' => 'debt.view'],
-    'reports' => ['title' => 'รายงาน', 'description' => 'เลือกชุดข้อมูลที่ต้องการตรวจสอบหรือส่งออก', 'icon' => 'chart', 'permission' => 'reports.view'],
-    'documents' => ['title' => 'คู่มือและเอกสาร', 'description' => 'ค้นหา ดาวน์โหลด และเผยแพร่เอกสารของระบบ', 'icon' => 'folder', 'permission' => null],
-    'users' => ['title' => 'ผู้ใช้งานและสิทธิ์', 'description' => 'ตรวจคำขอสมัครสมาชิกและกำหนดสิทธิ์เข้าใช้งาน', 'icon' => 'users', 'permission' => 'users.manage'],
-    'notifications' => ['title' => 'งานและการแจ้งเตือน', 'description' => 'ติดตามงานที่ต้องดำเนินการ กำหนดเวลา และข่าวสารของคุณ', 'icon' => 'bell', 'permission' => 'notifications.view', 'hidden' => true],
-];
+$pages = workspace_page_definitions();
 
 $requestedPage = isset($_GET['page']) && is_string($_GET['page']) ? $_GET['page'] : 'dashboard';
 $page = array_key_exists($requestedPage, $pages) ? $requestedPage : 'dashboard';
@@ -44,8 +35,10 @@ try {
         require __DIR__ . '/includes/admin-registrations.php';
     } elseif ($page === 'registry') {
         require __DIR__ . '/includes/registry.php';
-    } elseif ($page === 'loans') {
+    } elseif (in_array($page, ['loans', 'loan-documents'], true)) {
         require __DIR__ . '/includes/loans.php';
+    } elseif (in_array($page, ['contracts', 'debt'], true)) {
+        require __DIR__ . '/includes/tracking.php';
     } elseif ($page === 'documents') {
         require __DIR__ . '/includes/public-documents.php';
     } elseif ($page === 'notifications') {
@@ -101,20 +94,26 @@ require __DIR__ . '/nav.php';
       <div><h1><?= e($pageTitle) ?></h1><p class="page-description"><?= e($pages[$page]['description']) ?></p></div>
       <?php if ($isDashboard && account_can($currentUser, 'loans.view')): ?>
       <a class="btn btn-primary" href="dashboard.php?page=loans"><?= app_icon('document') ?> ดูทะเบียนเงินกู้</a>
-      <?php elseif (in_array($page, ['registry', 'loans', 'debt'], true)): ?>
+      <?php elseif (in_array($page, ['registry', 'loans', 'loan-documents', 'contracts', 'debt'], true)): ?>
       <button class="btn btn-outline-primary" type="button" data-export-table="recordsTable" data-export-name="<?= e($page) ?>.csv"><?= app_icon('download') ?> ส่งออก CSV</button>
       <?php endif; ?>
     </div>
     <?php
     if ($isDashboard) {
         require __DIR__ . '/views/dashboard-role.php';
-        require __DIR__ . '/views/dashboard-documents.php';
+        require_once __DIR__ . '/views/dashboard-documents.php';
     } elseif ($page === 'reports') {
         require __DIR__ . '/views/reports.php';
     } elseif ($page === 'registry') {
         require __DIR__ . '/views/registry.php';
     } elseif ($page === 'loans') {
         require __DIR__ . '/views/loans.php';
+    } elseif ($page === 'loan-documents') {
+        require __DIR__ . '/views/loan-documents.php';
+    } elseif ($page === 'contracts') {
+        require __DIR__ . '/views/contracts.php';
+    } elseif ($page === 'debt') {
+        require __DIR__ . '/views/debt.php';
     } elseif ($page === 'users') {
         require __DIR__ . '/views/users.php';
     } elseif ($page === 'notifications') {

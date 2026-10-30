@@ -89,6 +89,7 @@ require __DIR__ . '/nav.php';
     </div>
     <?php if ($isDashboard) {
         require __DIR__ . '/views/dashboard.php';
+        require_once __DIR__ . '/views/dashboard-documents.php';
     } else {
         require __DIR__ . '/views/documents.php';
     } ?>

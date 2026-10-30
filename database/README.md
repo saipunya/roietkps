@@ -10,6 +10,7 @@
 6. `006_public_documents.sql` — คู่มือและเอกสารเผยแพร่สำหรับดาวน์โหลด
 7. `007_public_document_pinning.sql` — การปักหมุดเอกสารสำคัญ
 8. `008_loan_document_workflow.sql` — การส่ง แก้ไข และตรวจเอกสารประกอบคำขอกู้
+9. `009_post_approval_tracking.sql` — การบันทึกผลติดตามหลังอนุมัติและสิทธิ์เมนูสัญญา/ติดตามหนี้
 
 ## บทบาท
 
@@ -51,6 +52,7 @@
 | `loan_reviews` | ความเห็นและผลการตรวจแต่ละรอบ |
 | `loan_contracts` | สัญญาที่สร้างจากคำขออนุมัติ |
 | `repayment_schedules`, `repayments` | ตารางชำระและรายการรับชำระ |
+| `contract_follow_ups` | ประวัติการโทร หนังสือ อีเมล หรือลงพื้นที่ติดตามสัญญา |
 | `audit_logs` | ประวัติการเปลี่ยนแปลงข้อมูลสำคัญ |
 | `workflow_tasks`, `notification_rules` | งาน ผู้รับผิดชอบ กำหนดเวลา และกติกาการติดตาม |
 | `notifications`, `notification_deliveries` | การแจ้งเตือนและสถานะการส่งแต่ละช่องทาง |
@@ -67,13 +69,15 @@ mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/006_public_documents.sql
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/007_public_document_pinning.sql
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/008_loan_document_workflow.sql
+mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/009_post_approval_tracking.sql
 ```
 
-ฐานข้อมูลบนโฮสต์ปัจจุบันนำเข้าถึง `003_core_workflow.sql` แล้ว ตรวจสอบได้ด้วย:
+ตรวจสอบการติดตั้งส่วนติดตามได้ด้วย:
 
 ```sql
 SELECT code, name, data_scope FROM roles ORDER BY id;
 SELECT COUNT(*) FROM permissions;
+SHOW TABLES LIKE 'contract_follow_ups';
 SHOW TABLES;
 ```
 

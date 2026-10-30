@@ -131,20 +131,18 @@
     });
   }
 
-  const replacementDocument = document.getElementById('replacementDocument');
-  if (replacementDocument) {
-    const documentType = document.getElementById('loanDocumentType');
-    const documentTitle = document.getElementById('loanDocumentTitle');
-    function updateReplacementFields() {
-      const replacing = replacementDocument.value !== '';
-      [documentType, documentTitle].forEach(function (field) {
-        if (!field) return;
-        field.disabled = replacing;
-        field.required = !replacing;
-      });
-    }
-    replacementDocument.addEventListener('change', updateReplacementFields);
-    updateReplacementFields();
+  const paymentSchedule = document.querySelector('[data-payment-schedule]');
+  if (paymentSchedule) {
+    const principalInput = document.querySelector('[data-payment-principal]');
+    const interestInput = document.querySelector('[data-payment-interest]');
+    const penaltyInput = document.querySelector('[data-payment-penalty]');
+    paymentSchedule.addEventListener('change', function () {
+      const selected = paymentSchedule.selectedOptions[0];
+      if (!selected || !selected.value) return;
+      if (principalInput) principalInput.value = Number(selected.dataset.principal || 0).toFixed(2);
+      if (interestInput) interestInput.value = Number(selected.dataset.interest || 0).toFixed(2);
+      if (penaltyInput) penaltyInput.value = Number(selected.dataset.penalty || 0).toFixed(2);
+    });
   }
 
   const table = document.getElementById('recordsTable');

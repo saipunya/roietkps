@@ -340,10 +340,10 @@ function tracking_province_reviewed(PDO $db, int $applicationId, int $actorId, s
             'task_type' => 'contract_preparation', 'entity_type' => 'loan_application', 'entity_id' => $applicationId,
             'cooperative_id' => (int) $loan['cooperative_id'], 'province_id' => (int) $loan['province_id'], 'assigned_user_id' => $actorId,
             'title' => 'จัดทำสัญญา ' . $loan['application_no'], 'description' => $loan['organization_name'], 'priority' => 'warning',
-            'due_at' => notification_due_at($db, 'contract_preparation_sla', 7), 'action_url' => 'dashboard.php?page=loans&view=' . $applicationId,
+            'due_at' => notification_due_at($db, 'contract_preparation_sla', 7), 'action_url' => 'dashboard.php?page=contracts',
             'source_key' => 'loan:' . $applicationId . ':contract:user:' . $actorId,
         ]);
-        notification_create($db, $actorId, 'contract', 'มีสัญญารอจัดทำ', $loan['organization_name'] . ' ได้รับอนุมัติคำขอกู้แล้ว', 'warning', 'dashboard.php?page=loans&view=' . $applicationId, 'loan:' . $applicationId . ':contract-notice:user:' . $actorId, 'loan_application', $applicationId);
+        notification_create($db, $actorId, 'contract', 'มีสัญญารอจัดทำ', $loan['organization_name'] . ' ได้รับอนุมัติคำขอกู้แล้ว', 'warning', 'dashboard.php?page=contracts', 'loan:' . $applicationId . ':contract-notice:user:' . $actorId, 'loan_application', $applicationId);
         return;
     }
     notification_create_for_users($db, array_merge($cooperativeUsers, $officerUsers), 'loan_rejected', 'คำขอกู้ไม่ได้รับการอนุมัติ', $shortComment, 'urgent', 'dashboard.php?page=loans&view=' . $applicationId, 'loan:' . $applicationId . ':rejected', 'loan_application', $applicationId);
@@ -429,14 +429,14 @@ function tracking_sync_user_tasks(PDO $db, array $user): void
                 'action_url' => 'dashboard.php?page=loans&view=' . (int) $loan['id'], 'source_key' => 'loan:' . (int) $loan['id'] . ':province:round:' . (int) $loan['review_round'] . ':user:' . $userId,
             ]);
         }
-        $contracts = $db->prepare("SELECT a.id, a.application_no, a.cooperative_id, a.approved_at, c.name FROM loan_applications a JOIN cooperatives c ON c.id = a.cooperative_id JOIN loan_contracts lc ON lc.loan_application_id = a.id WHERE c.province_id = ? AND a.approved_by = ? AND lc.status = 'awaiting_preparation'");
+        $contracts = $db->prepare("SELECT a.id, a.application_no, a.cooperative_id, a.approved_at, c.name, lc.id AS contract_id FROM loan_applications a JOIN cooperatives c ON c.id = a.cooperative_id JOIN loan_contracts lc ON lc.loan_application_id = a.id WHERE c.province_id = ? AND a.approved_by = ? AND lc.status = 'awaiting_preparation'");
         $contracts->execute([$provinceId, $userId]);
         foreach ($contracts->fetchAll() as $loan) {
             workflow_task_upsert($db, [
                 'task_type' => 'contract_preparation', 'entity_type' => 'loan_application', 'entity_id' => (int) $loan['id'], 'cooperative_id' => (int) $loan['cooperative_id'],
                 'province_id' => $provinceId, 'assigned_user_id' => $userId, 'title' => 'จัดทำสัญญา ' . $loan['application_no'], 'description' => $loan['name'],
                 'priority' => 'warning', 'due_at' => gmdate('Y-m-d H:i:s', strtotime(($loan['approved_at'] ?: 'now') . ' UTC') + notification_rule_days($db, 'contract_preparation_sla', 7) * 86400),
-                'action_url' => 'dashboard.php?page=loans&view=' . (int) $loan['id'], 'source_key' => 'loan:' . (int) $loan['id'] . ':contract:user:' . $userId,
+                'action_url' => 'dashboard.php?page=contracts&contract=' . (int) $loan['contract_id'], 'source_key' => 'loan:' . (int) $loan['id'] . ':contract:user:' . $userId,
             ]);
         }
     }
@@ -458,7 +458,7 @@ function tracking_sync_repayments(PDO $db, array $user): void
     } else {
         return;
     }
-    $query = $db->prepare("SELECT rs.id, rs.installment_no, rs.due_date, DATEDIFF(rs.due_date, DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 HOUR))) AS days_until_due, lc.contract_no, lc.cooperative_id, c.name, c.province_id FROM repayment_schedules rs JOIN loan_contracts lc ON lc.id = rs.contract_id JOIN cooperatives c ON c.id = lc.cooperative_id WHERE {$scope} AND lc.status = 'active' AND rs.status IN ('scheduled', 'partial', 'overdue') AND rs.due_date <= DATE_ADD(DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 HOUR)), INTERVAL 30 DAY) ORDER BY rs.due_date LIMIT 200");
+    $query = $db->prepare("SELECT rs.id, rs.installment_no, rs.due_date, DATEDIFF(rs.due_date, DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 HOUR))) AS days_until_due, lc.id AS contract_id, lc.contract_no, lc.cooperative_id, c.name, c.province_id FROM repayment_schedules rs JOIN loan_contracts lc ON lc.id = rs.contract_id JOIN cooperatives c ON c.id = lc.cooperative_id WHERE {$scope} AND lc.status = 'active' AND rs.status IN ('scheduled', 'partial', 'overdue') AND rs.due_date <= DATE_ADD(DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 HOUR)), INTERVAL 30 DAY) ORDER BY rs.due_date LIMIT 200");
     $query->execute($parameters);
     foreach ($query->fetchAll() as $schedule) {
         $days = (int) $schedule['days_until_due'];
@@ -470,7 +470,7 @@ function tracking_sync_repayments(PDO $db, array $user): void
             'task_type' => 'repayment_followup', 'entity_type' => 'repayment_schedule', 'entity_id' => (int) $schedule['id'],
             'cooperative_id' => (int) $schedule['cooperative_id'], 'province_id' => (int) $schedule['province_id'], 'assigned_user_id' => (int) $user['id'],
             'title' => $title, 'description' => $description, 'priority' => $overdue ? 'urgent' : 'warning',
-            'due_at' => $schedule['due_date'] . ' 16:59:59', 'action_url' => 'dashboard.php?page=debt',
+            'due_at' => $schedule['due_date'] . ' 16:59:59', 'action_url' => 'dashboard.php?page=debt&contract=' . (int) $schedule['contract_id'],
             'source_key' => 'repayment:' . (int) $schedule['id'] . ':user:' . (int) $user['id'],
         ]);
         if ($overdue) {
@@ -489,7 +489,7 @@ function tracking_sync_repayments(PDO $db, array $user): void
             $bucket = 'due-30';
             $message = $description . ' ครบกำหนดภายใน 30 วัน';
         }
-        notification_create($db, (int) $user['id'], 'repayment', $title, $message, $overdue ? 'urgent' : 'warning', 'dashboard.php?page=debt', 'repayment:' . (int) $schedule['id'] . ':' . $bucket . ':user:' . (int) $user['id'], 'repayment_schedule', (int) $schedule['id']);
+        notification_create($db, (int) $user['id'], 'repayment', $title, $message, $overdue ? 'urgent' : 'warning', 'dashboard.php?page=debt&contract=' . (int) $schedule['contract_id'], 'repayment:' . (int) $schedule['id'] . ':' . $bucket . ':user:' . (int) $user['id'], 'repayment_schedule', (int) $schedule['id']);
     }
 }
 

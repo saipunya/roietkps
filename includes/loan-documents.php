@@ -173,7 +173,9 @@ function loan_document_store(PDO $db, array $actor, int $applicationId, array $v
 
         $officerId = loan_document_primary_officer($db, (int) $loan['cooperative_id'], $loan['assigned_officer_id'] ? (int) $loan['assigned_officer_id'] : null);
         if ($officerId) {
-            notification_create($db, $officerId, 'loan_document', 'มีเอกสารคำขอกู้ใหม่', $loan['organization_name'] . ' อัปโหลด ' . $title, 'warning', 'dashboard.php?page=loans&view=' . $applicationId, 'loan-document:' . $documentId . ':uploaded', 'loan_document', $documentId);
+            $notificationTitle = $replacementId > 0 ? 'มีเอกสารคำขอกู้ฉบับแก้ไข' : 'มีเอกสารคำขอกู้ใหม่';
+            $notificationMessage = $loan['organization_name'] . ($replacementId > 0 ? ' อัปโหลดฉบับแก้ไขของ ' : ' อัปโหลด ') . $title;
+            notification_create($db, $officerId, 'loan_document', $notificationTitle, $notificationMessage, 'warning', 'dashboard.php?page=loan-documents&loan=' . $applicationId, 'loan-document:' . $documentId . ':uploaded', 'loan_document', $documentId);
         }
         $db->commit();
         return $documentId;
@@ -214,10 +216,10 @@ function loan_document_review(PDO $db, array $actor, int $applicationId, int $do
             $db->prepare("UPDATE loan_applications SET status = 'revision_requested', promotion_reviewed_at = UTC_TIMESTAMP(), row_version = row_version + 1 WHERE id = ?")->execute([$applicationId]);
             $comment = 'เอกสาร "' . $document['title'] . '": ' . $note;
             $db->prepare("INSERT INTO loan_reviews (loan_application_id, review_round, review_stage, decision, from_status, to_status, comment, reviewed_by) VALUES (?, ?, 'promotion', 'request_revision', ?, 'revision_requested', ?, ?)")->execute([$applicationId, $document['review_round'], $document['application_status'], $comment, (int) $actor['id']]);
-            tracking_promotion_reviewed($db, $applicationId, (int) $actor['id'], 'request_revision', $comment, 'dashboard.php?page=loans&view=' . $applicationId);
+            tracking_promotion_reviewed($db, $applicationId, (int) $actor['id'], 'request_revision', $comment, 'dashboard.php?page=loan-documents&loan=' . $applicationId);
         } else {
             $cooperativeUsers = notification_active_user_ids($db, 'cooperative_user', null, (int) $document['cooperative_id']);
-            notification_create_for_users($db, $cooperativeUsers, 'loan_document', 'เอกสารผ่านการตรวจแล้ว', $document['title'] . ' ผ่านการตรวจจากเจ้าหน้าที่ส่งเสริม', 'normal', 'dashboard.php?page=loans&view=' . $applicationId, 'loan-document:' . $documentId . ':verified', 'loan_document', $documentId);
+            notification_create_for_users($db, $cooperativeUsers, 'loan_document', 'เอกสารผ่านการตรวจแล้ว', $document['title'] . ' ผ่านการตรวจจากเจ้าหน้าที่ส่งเสริม', 'normal', 'dashboard.php?page=loan-documents&loan=' . $applicationId, 'loan-document:' . $documentId . ':verified', 'loan_document', $documentId);
         }
         $db->commit();
     } catch (Throwable $exception) {

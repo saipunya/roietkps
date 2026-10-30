@@ -6,6 +6,7 @@ $loanError = '';
 $loanNotice = isset($_SESSION['loan_notice']) ? (string) $_SESSION['loan_notice'] : '';
 unset($_SESSION['loan_notice']);
 $db = app_db();
+$isLoanDocumentPage = isset($page) && $page === 'loan-documents';
 
 function loan_scope(array $user): array
 {
@@ -46,13 +47,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $operation = post_text('operation');
             if ($operation === 'upload_loan_document') {
                 $applicationId = filter_var(post_text('application_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+                $replacementId = filter_var(post_text('replaces_document_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
                 loan_document_store($db, $currentUser, $applicationId, [
                     'document_type' => post_text('document_type'),
                     'title' => post_text('document_title'),
-                    'replaces_document_id' => post_text('replaces_document_id'),
+                    'replaces_document_id' => $replacementId,
                 ], isset($_FILES['loan_document_file']) && is_array($_FILES['loan_document_file']) ? $_FILES['loan_document_file'] : []);
-                $_SESSION['loan_notice'] = 'อัปโหลดเอกสารและแจ้งเจ้าหน้าที่ผู้รับผิดชอบแล้ว';
-                header('Location: dashboard.php?page=loans&view=' . $applicationId, true, 303);
+                $_SESSION['loan_notice'] = $replacementId > 0
+                    ? 'อัปโหลดไฟล์ฉบับแก้ไขแล้ว เมื่อแก้ไขเอกสารครบให้กดส่งให้เจ้าหน้าที่ตรวจสอบอีกครั้ง'
+                    : 'อัปโหลดเอกสารเรียบร้อยแล้ว';
+                header('Location: dashboard.php?page=loan-documents&loan=' . $applicationId, true, 303);
                 exit;
             }
 
@@ -62,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $decision = post_text('document_decision');
                 loan_document_review($db, $currentUser, $applicationId, $documentId, $decision, post_text('document_review_note'));
                 $_SESSION['loan_notice'] = $decision === 'verified' ? 'บันทึกว่าเอกสารผ่านการตรวจแล้ว' : 'ส่งเอกสารกลับให้หน่วยงานแก้ไขแล้ว';
-                header('Location: dashboard.php?page=loans&view=' . $applicationId, true, 303);
+                header('Location: dashboard.php?page=loan-documents&loan=' . $applicationId, true, 303);
                 exit;
             }
 
@@ -253,13 +257,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 [$loanScopeSql, $loanScopeParameters] = loan_scope($currentUser);
-$query = $db->prepare("SELECT a.*, c.name AS organization_name, c.organization_type, u.full_name AS officer_name, lc.id AS contract_id, lc.status AS contract_status FROM loan_applications a JOIN cooperatives c ON c.id = a.cooperative_id LEFT JOIN users u ON u.id = a.assigned_officer_id LEFT JOIN loan_contracts lc ON lc.loan_application_id = a.id WHERE {$loanScopeSql} ORDER BY a.updated_at DESC, a.id DESC");
+$query = $db->prepare("SELECT a.*, c.name AS organization_name, c.organization_type, u.full_name AS officer_name, lc.id AS contract_id, lc.status AS contract_status,
+    COALESCE(document_stats.current_document_count, 0) AS current_document_count,
+    COALESCE(document_stats.uploaded_document_count, 0) AS uploaded_document_count,
+    COALESCE(document_stats.revision_document_count, 0) AS revision_document_count,
+    COALESCE(document_stats.verified_document_count, 0) AS verified_document_count
+    FROM loan_applications a
+    JOIN cooperatives c ON c.id = a.cooperative_id
+    LEFT JOIN users u ON u.id = a.assigned_officer_id
+    LEFT JOIN loan_contracts lc ON lc.loan_application_id = a.id
+    LEFT JOIN (
+        SELECT d.loan_application_id, COUNT(*) AS current_document_count,
+            SUM(d.status = 'uploaded') AS uploaded_document_count,
+            SUM(d.status = 'needs_revision') AS revision_document_count,
+            SUM(d.status = 'verified') AS verified_document_count
+        FROM loan_documents d
+        LEFT JOIN loan_documents newer ON newer.replaces_document_id = d.id
+        WHERE newer.id IS NULL
+        GROUP BY d.loan_application_id
+    ) document_stats ON document_stats.loan_application_id = a.id
+    WHERE {$loanScopeSql} ORDER BY a.updated_at DESC, a.id DESC");
 $query->execute($loanScopeParameters);
 $loanRows = $query->fetchAll();
 
-$loanViewId = isset($_GET['view']) && is_scalar($_GET['view']) ? (int) $_GET['view'] : 0;
-$loanEditId = isset($_GET['edit']) && is_scalar($_GET['edit']) ? (int) $_GET['edit'] : 0;
-$newLoan = isset($_GET['action']) && $_GET['action'] === 'new';
+$loanViewId = $isLoanDocumentPage
+    ? (isset($_GET['loan']) && is_scalar($_GET['loan']) ? (int) $_GET['loan'] : 0)
+    : (isset($_GET['view']) && is_scalar($_GET['view']) ? (int) $_GET['view'] : 0);
+$loanEditId = !$isLoanDocumentPage && isset($_GET['edit']) && is_scalar($_GET['edit']) ? (int) $_GET['edit'] : 0;
+$newLoan = !$isLoanDocumentPage && isset($_GET['action']) && $_GET['action'] === 'new';
 $selectedLoan = null;
 foreach ($loanRows as $row) {
     if ((int) $row['id'] === $loanViewId || (int) $row['id'] === $loanEditId) {

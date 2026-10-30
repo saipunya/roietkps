@@ -21,7 +21,6 @@ $stats = [
     </article>
   <?php endforeach; ?>
 </section>
-<?php require __DIR__ . '/dashboard-documents.php'; ?>
 
 <section class="chart-grid" aria-label="กราฟสรุปข้อมูลกองทุน">
   <article class="surface chart-card chart-card-wide">
