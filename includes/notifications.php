@@ -25,7 +25,7 @@ function notification_safe_action_url(string $url): string
     if (strlen($url) > 500 || preg_match('/[\r\n]/', $url)) {
         return 'dashboard.php';
     }
-    if (!preg_match('/\A(?:index|dashboard)\.php\?page=(?:dashboard|registry|loans|debt|reports|documents|users|notifications)(?:&[A-Za-z0-9_.=%-]+)*\z/', $url)) {
+    if (!preg_match('/\A(?:index|dashboard)\.php\?page=(?:dashboard|registry|loans|loan-documents|contracts|debt|reports|documents|users|notifications)(?:&[A-Za-z0-9_.=%-]+)*\z/', $url)) {
         return 'dashboard.php';
     }
     return preg_replace('/\Aindex\.php/', 'dashboard.php', $url) ?: 'dashboard.php';

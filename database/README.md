@@ -14,6 +14,8 @@
 10. `010_provincial_director_and_positions.sql` — เพิ่มประเภทผู้ใช้สหกรณ์จังหวัดและตำแหน่งของผู้ใช้งาน
 11. `011_remove_user_email.sql` — ยกเลิกการเก็บอีเมลในบัญชีผู้ใช้งาน
 12. `012_record_corrections.sql` — รองรับการปลดล็อกคำขอและแก้ไขรายการรับชำระ/ติดตามโดยเก็บประวัติเดิม
+13. `013_loan_repayment_due_date.sql` — เพิ่มวันครบกำหนดชำระในคำขอกู้และส่งต่อไปยังสัญญา
+14. `014_loan_lifecycle_status.sql` — เพิ่มสิทธิ์ยกเลิก เหตุผลการยกเลิก และสถานะภาพรวมตั้งแต่เสนอขออนุมัติถึงเสร็จสิ้น
 
 ## บทบาท
 
@@ -37,10 +39,12 @@
              → สร้างคำขอกู้และผู้ค้ำ
              → เจ้าหน้าที่ส่งเสริมตรวจ/ส่งกลับแก้ไข
              → เจ้าหน้าที่จังหวัดตรวจและอนุมัติ
-             → รอจัดทำสัญญา → ลงนาม → เบิกจ่าย → ติดตามชำระ → ปิดสัญญา
+             → รอจัดทำสัญญา → ลงนาม → เบิกจ่าย → ติดตามชำระ → ชำระครบ/เสร็จสิ้น → ปิดสัญญา
 ```
 
 คำขอที่อนุมัติแล้วถูกล็อก การแก้ไขภายหลังต้องใช้สิทธิ์ `records.unlock` และบันทึกเหตุผลใน `audit_logs` ห้ามแก้ข้อมูลที่อนุมัติแล้วด้วย SQL โดยตรง
+
+หน้ารายการแสดงสถานะภาพรวมจากทั้งคำขอและสัญญา ได้แก่ ฉบับร่าง, เสนอขออนุมัติ, ส่งกลับแก้ไข, อนุมัติ, เสร็จสิ้น, ยกเลิก และไม่อนุมัติ โดยยังเก็บสถานะขั้นตอนภายในแยกกัน คำขอยกเลิกได้ก่อนเกิดสัญญาตามสิทธิ์ ส่วนสัญญายกเลิกได้ก่อนเบิกจ่ายและต้องระบุเหตุผล เมื่อรับชำระครบ ระบบจะเปลี่ยนเป็น `completed` อัตโนมัติ
 
 ## ตารางสำคัญ
 
@@ -77,6 +81,8 @@ mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/010_provincial_director_and_positions.sql
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/011_remove_user_email.sql
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/012_record_corrections.sql
+mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/013_loan_repayment_due_date.sql
+mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/014_loan_lifecycle_status.sql
 ```
 
 ตรวจสอบการติดตั้งส่วนติดตามได้ด้วย:
@@ -97,6 +103,9 @@ SHOW TABLES;
 ```sh
 TEST_DB_DSN='mysql:host=127.0.0.1;dbname=roietkps_test_access;charset=utf8mb4' \
 TEST_DB_USER='test_user' php tests/user_access_schema_test.php
+
+TEST_DB_DSN='mysql:host=127.0.0.1;dbname=roietkps_test_lifecycle;charset=utf8mb4' \
+TEST_DB_USER='test_user' php tests/loan_lifecycle_status_test.php
 ```
 
 กระบวนการใน migration 003 ผ่านการทดสอบด้วย PHP 7.4 และ MariaDB ตั้งแต่สมัครและอนุมัติบัญชี สร้างหน่วยงาน สร้างคำขอพร้อมผู้ค้ำหลายคน ส่งตรวจสองระดับ อนุมัติ และสร้างรายการรอจัดทำสัญญา

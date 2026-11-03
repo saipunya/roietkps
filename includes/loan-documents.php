@@ -99,6 +99,173 @@ function loan_document_primary_officer(PDO $db, int $cooperativeId, ?int $assign
     return $officerId ? (int) $officerId : null;
 }
 
+function loan_document_admin_clear_state(PDO $db, int $applicationId): array
+{
+    $query = $db->prepare("SELECT a.id, a.application_no, a.status, a.review_round, a.province_reviewed_at,
+        (SELECT COUNT(*) FROM loan_documents d WHERE d.loan_application_id = a.id) AS document_count,
+        (SELECT COUNT(*) FROM loan_reviews r WHERE r.loan_application_id = a.id AND r.review_stage = 'province') AS province_review_count,
+        (SELECT COUNT(*) FROM loan_contracts lc WHERE lc.loan_application_id = a.id) AS contract_count
+        FROM loan_applications a WHERE a.id = ?");
+    $query->execute([$applicationId]);
+    $application = $query->fetch();
+    if (!$application) {
+        return ['allowed' => false, 'document_count' => 0, 'message' => 'ไม่พบคำขอกู้ที่ต้องการล้างเอกสาร'];
+    }
+
+    $documentCount = (int) $application['document_count'];
+    if ($documentCount < 1) {
+        return ['allowed' => false, 'document_count' => 0, 'message' => 'คำขอนี้ไม่มีเอกสารที่ต้องล้าง'];
+    }
+    if (!in_array($application['status'], ['draft', 'submitted', 'promotion_review', 'revision_requested'], true)
+        || $application['province_reviewed_at'] !== null
+        || (int) $application['province_review_count'] > 0
+        || (int) $application['contract_count'] > 0) {
+        return [
+            'allowed' => false,
+            'document_count' => $documentCount,
+            'message' => 'คำขอนี้เข้าสู่การพิจารณาระดับจังหวัดหรือกระบวนการสัญญาแล้ว จึงไม่สามารถล้างเอกสารได้',
+        ];
+    }
+
+    return [
+        'allowed' => true,
+        'document_count' => $documentCount,
+        'application_no' => (string) $application['application_no'],
+        'message' => '',
+    ];
+}
+
+function loan_document_remove_stored_files(array $storedNames): array
+{
+    $removed = 0;
+    $failed = 0;
+    $storagePath = loan_document_storage_path();
+    foreach (array_unique($storedNames) as $storedName) {
+        if (!is_string($storedName) || $storedName === '' || basename($storedName) !== $storedName) {
+            $failed++;
+            continue;
+        }
+        $path = $storagePath . DIRECTORY_SEPARATOR . $storedName;
+        if (!file_exists($path) && !is_link($path)) {
+            continue;
+        }
+        if (@unlink($path)) {
+            $removed++;
+        } else {
+            $failed++;
+        }
+    }
+    return ['removed' => $removed, 'failed' => $failed];
+}
+
+function loan_document_admin_clear(PDO $db, array $actor, int $applicationId, string $confirmation, string $reason): array
+{
+    if (!account_is_admin($actor)) {
+        throw new DomainException('เฉพาะ Admin เท่านั้นที่ล้างข้อมูลการส่งเอกสารได้');
+    }
+    if ($applicationId < 1 || mb_strlen($reason, 'UTF-8') < 5 || mb_strlen($reason, 'UTF-8') > 500) {
+        throw new DomainException('กรุณาระบุเหตุผลการล้างข้อมูล 5–500 ตัวอักษร');
+    }
+
+    $storedNames = [];
+    $result = [];
+    $db->beginTransaction();
+    try {
+        $query = $db->prepare('SELECT id, application_no, status, review_round, province_reviewed_at FROM loan_applications WHERE id = ? FOR UPDATE');
+        $query->execute([$applicationId]);
+        $application = $query->fetch();
+        if (!$application) {
+            throw new DomainException('ไม่พบคำขอกู้ที่ต้องการล้างเอกสาร');
+        }
+        if (!hash_equals((string) $application['application_no'], trim($confirmation))) {
+            throw new DomainException('กรุณาพิมพ์เลขที่คำขอให้ตรงกับรายการเพื่อยืนยัน');
+        }
+
+        $provinceReview = $db->prepare("SELECT COUNT(*) FROM loan_reviews WHERE loan_application_id = ? AND review_stage = 'province'");
+        $provinceReview->execute([$applicationId]);
+        $contract = $db->prepare('SELECT COUNT(*) FROM loan_contracts WHERE loan_application_id = ?');
+        $contract->execute([$applicationId]);
+        if (!in_array($application['status'], ['draft', 'submitted', 'promotion_review', 'revision_requested'], true)
+            || $application['province_reviewed_at'] !== null
+            || (int) $provinceReview->fetchColumn() > 0
+            || (int) $contract->fetchColumn() > 0) {
+            throw new DomainException('ไม่สามารถล้างได้ เนื่องจากคำขอเข้าสู่การพิจารณาระดับจังหวัดหรือกระบวนการสัญญาแล้ว');
+        }
+
+        $documents = $db->prepare('SELECT id, stored_name FROM loan_documents WHERE loan_application_id = ? ORDER BY id FOR UPDATE');
+        $documents->execute([$applicationId]);
+        $documentRows = $documents->fetchAll();
+        if (!$documentRows) {
+            throw new DomainException('คำขอนี้ไม่มีเอกสารที่ต้องล้าง');
+        }
+        $documentIds = array_map('intval', array_column($documentRows, 'id'));
+        $storedNames = array_column($documentRows, 'stored_name');
+        $placeholders = implode(',', array_fill(0, count($documentIds), '?'));
+
+        $documentReviewCount = $db->prepare("SELECT COUNT(*) FROM loan_document_reviews WHERE loan_document_id IN ({$placeholders})");
+        $documentReviewCount->execute($documentIds);
+        $reviewCount = (int) $documentReviewCount->fetchColumn();
+
+        $notificationCount = 0;
+        $taskCount = 0;
+        if (notification_schema_ready($db)) {
+            $notification = $db->prepare("DELETE FROM notifications
+                WHERE (entity_type = 'loan_document' AND entity_id IN ({$placeholders}))
+                   OR (entity_type = 'loan_application' AND entity_id = ? AND category IN ('loan', 'loan_revision'))");
+            $notification->execute(array_merge($documentIds, [$applicationId]));
+            $notificationCount = $notification->rowCount();
+
+            $tasks = $db->prepare("DELETE FROM workflow_tasks WHERE entity_type = 'loan_application' AND entity_id = ? AND task_type IN ('promotion_review', 'loan_revision')");
+            $tasks->execute([$applicationId]);
+            $taskCount = $tasks->rowCount();
+        }
+
+        $deleteDocumentReviews = $db->prepare("DELETE FROM loan_document_reviews WHERE loan_document_id IN ({$placeholders})");
+        $deleteDocumentReviews->execute($documentIds);
+        $db->prepare('UPDATE loan_documents SET replaces_document_id = NULL WHERE loan_application_id = ? AND replaces_document_id IS NOT NULL')->execute([$applicationId]);
+        $deleteDocuments = $db->prepare('DELETE FROM loan_documents WHERE loan_application_id = ?');
+        $deleteDocuments->execute([$applicationId]);
+
+        $promotionReviews = $db->prepare("DELETE FROM loan_reviews WHERE loan_application_id = ? AND review_stage = 'promotion'");
+        $promotionReviews->execute([$applicationId]);
+        $promotionReviewCount = $promotionReviews->rowCount();
+
+        $db->prepare("UPDATE loan_applications SET status = 'draft', review_round = 1, submitted_at = NULL, promotion_reviewed_at = NULL, row_version = row_version + 1 WHERE id = ?")->execute([$applicationId]);
+        $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, new_values, ip_hash) VALUES (?, 'loan_documents.admin_clear', 'loan_application', ?, ?, ?, ?)");
+        $audit->execute([
+            (int) $actor['id'],
+            $applicationId,
+            json_encode([
+                'status' => $application['status'],
+                'review_round' => (int) $application['review_round'],
+                'document_count' => count($documentRows),
+                'document_review_count' => $reviewCount,
+                'promotion_review_count' => $promotionReviewCount,
+            ], JSON_UNESCAPED_UNICODE),
+            json_encode(['status' => 'draft', 'reason' => $reason], JSON_UNESCAPED_UNICODE),
+            hash('sha256', $_SERVER['REMOTE_ADDR'] ?? ''),
+        ]);
+        $db->commit();
+        $result = [
+            'documents' => count($documentRows),
+            'document_reviews' => $reviewCount,
+            'promotion_reviews' => $promotionReviewCount,
+            'notifications' => $notificationCount,
+            'tasks' => $taskCount,
+        ];
+    } catch (Throwable $exception) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        throw $exception;
+    }
+
+    $fileResult = loan_document_remove_stored_files($storedNames);
+    $result['files_removed'] = $fileResult['removed'];
+    $result['files_failed'] = $fileResult['failed'];
+    return $result;
+}
+
 function loan_document_store(PDO $db, array $actor, int $applicationId, array $values, array $file): int
 {
     if ($actor['role_code'] !== 'cooperative_user' || !account_can($actor, 'documents.upload')) {

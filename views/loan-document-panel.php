@@ -73,4 +73,27 @@ foreach ($currentLoanDocuments as $loanDocument) {
     <?php endforeach; ?>
   </div>
   <?php endif; ?>
+
+  <?php if (account_is_admin($currentUser) && $loanDocuments): ?>
+  <div class="loan-document-admin-clear<?= $loanDocumentClearState['allowed'] ? '' : ' is-locked' ?>">
+    <div class="loan-document-admin-clear-heading">
+      <span aria-hidden="true"><?= app_icon($loanDocumentClearState['allowed'] ? 'trash' : 'lock') ?></span>
+      <div><strong>ล้างข้อมูลการส่งเอกสารของคำขอนี้</strong><p>ใช้เมื่อต้องการนำข้อมูลทดสอบออก โดยไม่ลบสหกรณ์ ผู้ใช้งาน รายละเอียดคำขอ หรือผู้ค้ำประกัน</p></div>
+    </div>
+    <?php if ($loanDocumentClearState['allowed']): ?>
+    <details>
+      <summary>เปิดแบบฟอร์มล้างข้อมูล <?= number_format((int) $loanDocumentClearState['document_count']) ?> ฉบับ</summary>
+      <form action="dashboard.php?page=loan-documents&amp;loan=<?= (int) $selectedLoan['id'] ?>" method="post" data-confirm="ยืนยันลบไฟล์และประวัติการส่งเอกสารของคำขอนี้อย่างถาวรหรือไม่?">
+        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="clear_test_loan_documents"><input type="hidden" name="application_id" value="<?= (int) $selectedLoan['id'] ?>">
+        <div class="loan-document-clear-impact" role="note"><strong>ข้อมูลที่จะถูกลบ</strong><span>ไฟล์ทุกฉบับ · ประวัติการตรวจเอกสาร · ความเห็นระดับเจ้าหน้าที่ส่งเสริม · งานและการแจ้งเตือนของรอบนี้</span><strong>ข้อมูลที่จะเก็บไว้</strong><span>หน่วยงาน · ผู้ใช้งาน · รายละเอียดคำขอกู้ · ผู้ค้ำประกัน · ประวัติ Audit</span></div>
+        <div class="auth-field"><label class="form-label" for="loanDocumentClearReason">เหตุผลการล้างข้อมูล</label><textarea class="form-control" id="loanDocumentClearReason" name="clear_reason" rows="2" minlength="5" maxlength="500" required></textarea></div>
+        <div class="auth-field"><label class="form-label" for="loanDocumentClearConfirmation">พิมพ์เลขที่คำขอ <strong><?= e($selectedLoan['application_no']) ?></strong> เพื่อยืนยัน</label><input class="form-control" type="text" id="loanDocumentClearConfirmation" name="clear_confirmation" autocomplete="off" maxlength="50" required></div>
+        <button class="btn btn-danger" type="submit"><?= app_icon('trash') ?> ล้างข้อมูลการส่งเอกสาร</button>
+      </form>
+    </details>
+    <?php else: ?>
+    <p class="loan-document-admin-clear-message"><?= e($loanDocumentClearState['message']) ?></p>
+    <?php endif; ?>
+  </div>
+  <?php endif; ?>
 </div>

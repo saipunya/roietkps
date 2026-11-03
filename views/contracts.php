@@ -8,6 +8,12 @@ $contractTone = function (string $status): string {
     }
     return 'warning';
 };
+$contractFormStatus = $selectedContract ? (string) $selectedContract['status'] : '';
+$contractCancellationReason = '';
+if ($selectedContract && $_SERVER['REQUEST_METHOD'] === 'POST' && post_text('operation') === 'save_contract' && (int) post_text('contract_id') === (int) $selectedContract['id']) {
+    $contractFormStatus = post_text('contract_status');
+    $contractCancellationReason = post_text('cancellation_reason');
+}
 ?>
 <?php if ($trackingNotice !== ''): ?><div class="alert alert-success" role="status"><?= e($trackingNotice) ?></div><?php endif; ?>
 <?php if ($trackingError !== ''): ?><div class="alert alert-danger" role="alert"><?= e($trackingError) ?></div><?php endif; ?>
@@ -27,6 +33,7 @@ $contractTone = function (string $status): string {
   </div>
   <div class="tracking-detail-body">
     <div class="loan-status-line"><span class="status-badge status-<?= e($contractTone($selectedContract['status'])) ?>"><?= e($contractStatusLabels[$selectedContract['status']] ?? $selectedContract['status']) ?></span><?php if ((int) $selectedContract['overdue_count'] > 0): ?><span class="status-badge status-danger">ค้างชำระ <?= (int) $selectedContract['overdue_count'] ?> งวด</span><?php endif; ?></div>
+    <?php if ($selectedContract['status'] === 'cancelled'): ?><div class="cancellation-summary" role="status"><span><?= app_icon('alert') ?></span><div><strong>สัญญานี้ถูกยกเลิกแล้ว</strong><p><?= e($selectedContract['cancellation_reason'] ?: 'ไม่ระบุเหตุผล') ?></p><small>ยกเลิกโดย <?= e($selectedContract['cancelled_by_name'] ?: 'ผู้ดำเนินการในระบบ') ?> · <?= e(post_approval_display_datetime($selectedContract['cancelled_at'])) ?></small></div></div><?php endif; ?>
     <dl class="loan-detail-grid tracking-contract-grid">
       <div><dt>เงินต้นตามสัญญา</dt><dd><?= e(number_format((float) $selectedContract['principal_amount'], 2)) ?> บาท</dd></div>
       <div><dt>อัตราดอกเบี้ย</dt><dd><?= e(number_format((float) $selectedContract['interest_rate'], 4)) ?>%</dd></div>
@@ -47,8 +54,9 @@ $contractTone = function (string $status): string {
         <div class="auth-field"><label class="form-label" for="contractNo">เลขที่สัญญา</label><input class="form-control" id="contractNo" name="contract_no" maxlength="50" placeholder="เช่น KPS-2569-001" value="<?= e($selectedContract['contract_no'] ?? '') ?>"></div>
         <div class="auth-field"><label class="form-label" for="contractStartDate">วันที่เริ่มสัญญา</label><input class="form-control" type="date" id="contractStartDate" name="start_date" value="<?= e($selectedContract['start_date'] ?? '') ?>"></div>
         <div class="auth-field"><label class="form-label" for="contractMaturityDate">วันที่ครบกำหนด</label><input class="form-control" type="date" id="contractMaturityDate" name="maturity_date" value="<?= e($selectedContract['maturity_date'] ?? '') ?>"></div>
-        <div class="auth-field"><label class="form-label" for="contractStatus">สถานะถัดไป</label><select class="form-select" id="contractStatus" name="contract_status" required><?php foreach (post_approval_contract_transitions($selectedContract['status']) as $status): ?><option value="<?= e($status) ?>"<?= $status === $selectedContract['status'] ? ' selected' : '' ?>><?= e($contractStatusLabels[$status] ?? $status) ?></option><?php endforeach; ?></select></div>
+        <div class="auth-field"><label class="form-label" for="contractStatus">สถานะถัดไป</label><select class="form-select" id="contractStatus" name="contract_status" required><?php foreach (post_approval_contract_transitions($selectedContract['status']) as $status): ?><option value="<?= e($status) ?>"<?= $status === $contractFormStatus ? ' selected' : '' ?>><?= e($contractStatusLabels[$status] ?? $status) ?></option><?php endforeach; ?></select></div>
       </div>
+      <div class="contract-cancellation-field" id="contractCancellationField" hidden><div class="auth-field"><label class="form-label" for="contractCancellationReason">เหตุผลการยกเลิกสัญญา</label><textarea class="form-control" id="contractCancellationReason" name="cancellation_reason" rows="3" minlength="5" maxlength="1000" disabled><?= e($contractCancellationReason) ?></textarea><p class="field-help mt-2">ยกเลิกได้ก่อนเบิกจ่ายเท่านั้น ระบบจะเก็บสัญญาและประวัติเดิมไว้</p></div></div>
       <div class="form-actions"><button class="btn btn-primary" type="submit"><?= app_icon('check') ?> บันทึกข้อมูลสัญญา</button></div>
     </form>
     <?php endif; ?>

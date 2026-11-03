@@ -58,6 +58,7 @@ function app_icon($name)
         'bell' => 'bell-fill',
         'briefcase' => 'briefcase-fill',
         'ban' => 'slash-circle-fill',
+        'trash' => 'trash3-fill',
     ];
     $icon = isset($icons[$name]) ? $icons[$name] : $icons['document'];
     return '<i class="bi bi-' . $icon . ' app-icon" aria-hidden="true"></i>';
@@ -68,6 +69,7 @@ function status_badge($status)
     $tones = [
         'อนุมัติ' => 'success',
         'อนุมัติแล้ว' => 'success',
+        'เสร็จสิ้น' => 'success',
         'ดำเนินงาน' => 'success',
         'ปกติ' => 'success',
         'ส่งตรวจแล้ว' => 'warning',
@@ -77,6 +79,9 @@ function status_badge($status)
         'ใกล้ครบกำหนด' => 'warning',
         'ส่งกลับแก้ไข' => 'danger',
         'ไม่อนุมัติ' => 'danger',
+        'ยกเลิก' => 'danger',
+        'เสนอขออนุมัติ' => 'warning',
+        'ฉบับร่าง' => 'neutral',
         'ค้างชำระ' => 'danger',
         'รอตรวจสอบ' => 'warning',
     ];

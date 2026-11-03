@@ -175,6 +175,25 @@
     });
   }
 
+  const contractStatus = document.getElementById('contractStatus');
+  const contractCancellationField = document.getElementById('contractCancellationField');
+  const contractCancellationReason = document.getElementById('contractCancellationReason');
+  if (contractStatus && contractCancellationField && contractCancellationReason) {
+    function updateContractCancellation() {
+      const cancelling = contractStatus.value === 'cancelled';
+      contractCancellationField.hidden = !cancelling;
+      contractCancellationReason.disabled = !cancelling;
+      contractCancellationReason.required = cancelling;
+    }
+    contractStatus.addEventListener('change', updateContractCancellation);
+    contractStatus.form.addEventListener('submit', function (event) {
+      if (contractStatus.value === 'cancelled' && !window.confirm('ยืนยันการยกเลิกสัญญานี้? การดำเนินการนี้ย้อนกลับผ่านหน้าระบบไม่ได้')) {
+        event.preventDefault();
+      }
+    });
+    updateContractCancellation();
+  }
+
   const table = document.getElementById('recordsTable');
   const search = document.getElementById('recordSearch');
   const status = document.getElementById('statusFilter');

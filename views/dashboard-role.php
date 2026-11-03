@@ -53,8 +53,8 @@ $applicationStatuses = [
     <div class="empty-state"><?= app_icon('document') ?><h2>ยังไม่มีคำขอกู้</h2><p>รายการใหม่จะแสดงที่นี่เมื่อเริ่มบันทึกข้อมูล</p></div>
   <?php else: ?>
     <div class="records-wrap"><table class="table records-table mb-0"><thead><tr><th>หน่วยงาน / เลขที่คำขอ</th><th>วัตถุประสงค์</th><th class="amount-cell">วงเงินที่ขอ</th><th>สถานะ</th></tr></thead><tbody>
-      <?php foreach ($roleDashboard['recent'] as $application): ?>
-        <tr><td class="record-primary"><strong><?= e($application['organization_name']) ?></strong><small><?= e($application['application_no']) ?></small></td><td data-label="วัตถุประสงค์"><?= e($application['purpose']) ?></td><td data-label="วงเงิน" class="amount-cell"><?= e(number_format((float) $application['requested_amount'], 2)) ?> บาท</td><td data-label="สถานะ"><span class="status-badge status-<?= in_array($application['status'], ['approved'], true) ? 'success' : ($application['status'] === 'revision_requested' ? 'danger' : 'warning') ?>"><?= e($applicationStatuses[$application['status']] ?? $application['status']) ?></span></td></tr>
+      <?php foreach ($roleDashboard['recent'] as $application): ?><?php $lifecycle = loan_lifecycle_status($application['status'], $application['contract_status']); ?>
+        <tr><td class="record-primary"><strong><?= e($application['organization_name']) ?></strong><small><?= e($application['application_no']) ?></small></td><td data-label="วัตถุประสงค์"><?= e($application['purpose']) ?></td><td data-label="วงเงิน" class="amount-cell"><?= e(number_format((float) $application['requested_amount'], 2)) ?> บาท</td><td data-label="สถานะ"><div class="lifecycle-status-cell"><span class="status-badge status-<?= e($lifecycle['tone']) ?>"><?= e($lifecycle['label']) ?></span><small><?= e($applicationStatuses[$application['status']] ?? $application['status']) ?></small></div></td></tr>
       <?php endforeach; ?>
     </tbody></table></div>
   <?php endif; ?>

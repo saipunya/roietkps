@@ -473,6 +473,52 @@ function update_managed_account(PDO $db, int $actorId, int $userId, array $value
     }
 }
 
+function reset_managed_account_password(PDO $db, int $actorId, int $userId, string $reason): array
+{
+    if (mb_strlen($reason, 'UTF-8') < 3 || mb_strlen($reason, 'UTF-8') > 500) {
+        throw new DomainException('กรุณาระบุเหตุผลการกำหนดรหัสผ่านใหม่ 3–500 ตัวอักษร');
+    }
+
+    $temporaryPassword = random_initial_password(8);
+    $db->beginTransaction();
+    try {
+        $admin = $db->prepare("SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id JOIN role_permissions rp ON rp.role_id = r.id JOIN permissions p ON p.id = rp.permission_id WHERE u.id = ? AND u.status = 'active' AND u.must_change_password = 0 AND r.is_active = 1 AND r.code = 'system_admin' AND p.code = 'users.manage' FOR UPDATE");
+        $admin->execute([$actorId]);
+        if (!$admin->fetchColumn() || $actorId === $userId) {
+            throw new DomainException('ไม่สามารถกำหนดรหัสผ่านใหม่ให้บัญชีนี้ได้');
+        }
+
+        $target = $db->prepare("SELECT u.id, u.username, u.status, u.must_change_password, r.code AS role_code FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? AND u.status IN ('active', 'suspended') FOR UPDATE");
+        $target->execute([$userId]);
+        $account = $target->fetch();
+        if (!$account || in_array($account['role_code'], ['system_admin', 'applicant'], true)) {
+            throw new DomainException('บัญชีนี้ไม่สามารถกำหนดรหัสผ่านใหม่จากเมนูนี้ได้');
+        }
+
+        $passwordHash = password_hash($temporaryPassword, PASSWORD_BCRYPT, ['cost' => 12]);
+        if (!is_string($passwordHash)) {
+            throw new RuntimeException('ไม่สามารถสร้างรหัสผ่านใหม่ได้');
+        }
+        $update = $db->prepare('UPDATE users SET password_hash = ?, must_change_password = 1, password_changed_at = UTC_TIMESTAMP(), failed_login_attempts = 0, locked_until = NULL, auth_version = auth_version + 1 WHERE id = ?');
+        $update->execute([$passwordHash, $userId]);
+
+        $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, new_values, ip_hash) VALUES (?, 'account.password_reset', 'user', ?, ?, ?, ?)");
+        $audit->execute([
+            $actorId,
+            $userId,
+            json_encode(['must_change_password' => (int) $account['must_change_password']], JSON_UNESCAPED_UNICODE),
+            json_encode(['must_change_password' => 1, 'reason' => $reason], JSON_UNESCAPED_UNICODE),
+            hash('sha256', $_SERVER['REMOTE_ADDR'] ?? ''),
+        ]);
+        notification_create($db, $userId, 'account', 'ผู้ดูแลระบบกำหนดรหัสผ่านใหม่', 'กรุณาใช้รหัสผ่านชั่วคราวที่ได้รับจากผู้ดูแลระบบ และเปลี่ยนรหัสผ่านเมื่อเข้าสู่ระบบ', 'urgent', 'change-password.php', 'account:password-reset:' . $userId . ':' . time(), 'user', $userId);
+        $db->commit();
+        return ['username' => $account['username'], 'password' => $temporaryPassword];
+    } catch (Throwable $exception) {
+        $db->rollBack();
+        throw $exception;
+    }
+}
+
 function set_managed_account_status(PDO $db, int $actorId, int $userId, string $newStatus, string $reason): void
 {
     if (!in_array($newStatus, ['active', 'suspended'], true)) {

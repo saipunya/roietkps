@@ -11,6 +11,10 @@ $createdAccountCredentials = isset($_SESSION['created_account_credentials']) && 
     ? $_SESSION['created_account_credentials']
     : null;
 unset($_SESSION['created_account_credentials']);
+$resetAccountCredentials = isset($_SESSION['reset_account_credentials']) && is_array($_SESSION['reset_account_credentials'])
+    ? $_SESSION['reset_account_credentials']
+    : null;
+unset($_SESSION['reset_account_credentials']);
 $db = app_db();
 $managementFailedUserId = 0;
 $showCreateAccount = isset($_GET['action']) && $_GET['action'] === 'new';
@@ -61,6 +65,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: dashboard.php?page=users&status=' . rawurlencode($returnStatus), true, 303);
                 exit;
             }
+            if ($operation === 'reset_account_password') {
+                $temporaryCredentials = reset_managed_account_password($db, (int) $currentUser['id'], (int) $userId, post_text('password_reset_reason'));
+                $returnStatus = in_array(post_text('return_status'), ['active', 'suspended'], true) ? post_text('return_status') : 'active';
+                $_SESSION['reset_account_credentials'] = $temporaryCredentials;
+                $_SESSION['approval_notice'] = 'กำหนดรหัสผ่านชั่วคราวใหม่และยุติ session เดิมของผู้ใช้งานแล้ว';
+                unset($temporaryCredentials);
+                header('Location: dashboard.php?page=users&status=' . rawurlencode($returnStatus) . '&edit=' . (int) $userId . '#accountPassword', true, 303);
+                exit;
+            }
             if ($operation === 'set_account_status') {
                 $newStatus = post_text('new_status');
                 set_managed_account_status($db, (int) $currentUser['id'], (int) $userId, $newStatus, post_text('status_reason'));
@@ -75,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (isset($operation) && $operation === 'create_account') {
                 $showCreateAccount = true;
             }
-            if (isset($operation) && in_array($operation, ['update_account', 'set_account_status'], true)) {
+            if (isset($operation) && in_array($operation, ['update_account', 'reset_account_password', 'set_account_status'], true)) {
                 $managementFailedUserId = isset($userId) ? (int) $userId : 0;
             }
         }

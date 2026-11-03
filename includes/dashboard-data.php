@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/loan-status.php';
+
 function dashboard_value(PDO $db, string $sql, array $parameters = [])
 {
     $query = $db->prepare($sql);
@@ -100,7 +102,7 @@ function load_role_dashboard(PDO $db, array $user): array
         $scopeParameters = [];
     }
 
-    $query = $db->prepare("SELECT a.id, a.application_no, a.purpose, a.requested_amount, a.status, a.updated_at, c.name AS organization_name FROM loan_applications a JOIN cooperatives c ON c.id = a.cooperative_id WHERE {$scopeSql} ORDER BY a.updated_at DESC, a.id DESC LIMIT 5");
+    $query = $db->prepare("SELECT a.id, a.application_no, a.purpose, a.requested_amount, a.status, a.updated_at, c.name AS organization_name, lc.status AS contract_status FROM loan_applications a JOIN cooperatives c ON c.id = a.cooperative_id LEFT JOIN loan_contracts lc ON lc.loan_application_id = a.id WHERE {$scopeSql} ORDER BY a.updated_at DESC, a.id DESC LIMIT 5");
     $query->execute($scopeParameters);
 
     return [

@@ -92,7 +92,7 @@
       labels: data.request_status.labels,
       datasets: [{
         data: data.request_status.values,
-        backgroundColor: ['#33775c', '#5378a2', '#d49a35', '#9aa8a0'],
+        backgroundColor: ['#9aa8a0', '#5378a2', '#d49a35', '#33775c', '#69a27e', '#b95b54', '#7e6a68'],
         borderColor: '#ffffff',
         borderWidth: 4,
         hoverOffset: 5

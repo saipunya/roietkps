@@ -310,9 +310,9 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
 .record-actions-group { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
 .record-button-danger { color: #a34b46; }
 .record-button-danger:hover { color: #7e302c; }
-.account-status-management { display: grid; grid-template-columns: minmax(220px, .75fr) minmax(320px, 1.25fr); gap: 28px; margin-top: 26px; padding-top: 24px; border-top: 1px solid var(--line); }
-.account-status-management h3 { margin: 0 0 4px; font-size: 18px; }
-.account-status-management > div > p { margin: 0; color: var(--muted); font-size: 14px; }
+.account-status-management, .account-password-management { display: grid; grid-template-columns: minmax(220px, .75fr) minmax(320px, 1.25fr); gap: 28px; margin-top: 26px; padding-top: 24px; border-top: 1px solid var(--line); }
+.account-status-management h3, .account-password-management h3 { margin: 0 0 4px; font-size: 18px; }
+.account-status-management > div > p, .account-password-management > div > p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
 .organization-form { padding: 4px 28px 28px; }
 .organization-detail-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 0 0 24px; }
 .organization-detail-grid > div { padding: 15px 17px; border: 1px solid var(--line); border-radius: 10px; background: #f9fbfa; }
@@ -468,7 +468,7 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
   .stats-grid { gap: 14px; }
 }
 @media (max-width: 767.98px) {
-  .account-status-management { grid-template-columns: 1fr; gap: 16px; }
+  .account-status-management, .account-password-management { grid-template-columns: 1fr; gap: 16px; }
   .record-actions-group { flex-wrap: wrap; }
   .notification-menu { width: min(370px, calc(100vw - 32px)); }
   .notification-summary-grid { gap: 10px; }
@@ -779,6 +779,20 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
 .loan-document-review-form .form-actions { margin-top: 11px; }
 .loan-document-empty { display: flex; align-items: center; gap: 9px; margin-top: 12px; padding: 20px; border: 1px dashed #cfddd5; border-radius: 10px; color: var(--muted); background: #fafcfb; }
 .loan-document-empty p { margin: 0; }
+.loan-document-admin-clear { margin-top: 20px; padding: 16px; border: 1px solid #e6c9c6; border-radius: 11px; background: #fff9f8; }
+.loan-document-admin-clear.is-locked { border-color: #dfe5e1; background: #f8faf9; }
+.loan-document-admin-clear-heading { display: flex; align-items: flex-start; gap: 11px; }
+.loan-document-admin-clear-heading > span { display: grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; border-radius: 9px; color: #9b3f39; background: #f8dfdc; }
+.loan-document-admin-clear.is-locked .loan-document-admin-clear-heading > span { color: #607268; background: #e8eeeb; }
+.loan-document-admin-clear-heading strong { display: block; color: #74312d; }
+.loan-document-admin-clear.is-locked .loan-document-admin-clear-heading strong { color: #3f554a; }
+.loan-document-admin-clear-heading p, .loan-document-admin-clear-message { margin: 3px 0 0; color: #6b5a57; font-size: 13px; }
+.loan-document-admin-clear details { margin-top: 12px; }
+.loan-document-admin-clear summary { width: fit-content; color: #8d3d37; font-size: 13px; font-weight: 600; cursor: pointer; }
+.loan-document-admin-clear form { display: grid; gap: 13px; margin-top: 13px; padding-top: 14px; border-top: 1px solid #eed9d6; }
+.loan-document-admin-clear form > .btn { justify-self: start; }
+.loan-document-clear-impact { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 12px; padding: 12px; border-radius: 9px; color: #634c48; background: #fff; font-size: 12px; }
+.loan-document-clear-impact strong { color: #773b36; }
 
 @media (max-width: 767.98px) {
   .loan-document-summary { align-items: stretch; flex-direction: column; }
@@ -805,6 +819,10 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
   .loan-document-review-form .form-actions { align-items: stretch; flex-direction: column; }
   .loan-document-revision-form .btn,
   .loan-document-review-form .btn { width: 100%; }
+  .loan-document-admin-clear { padding: 14px; }
+  .loan-document-clear-impact { grid-template-columns: 1fr; }
+  .loan-document-clear-impact span + strong { margin-top: 5px; }
+  .loan-document-admin-clear form > .btn { width: 100%; }
 }
 
 /* Post-approval contract and repayment tracking. */
@@ -880,4 +898,33 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
   .tracking-form-grid.follow-up-grid { grid-template-columns: 1fr; }
   .tracking-wide-field { grid-column: auto; }
   .tracking-table { min-width: 690px; }
+}
+
+/* Unified loan lifecycle and controlled cancellation. */
+.lifecycle-status-cell { display: grid; justify-items: start; gap: 5px; min-width: 132px; }
+.lifecycle-status-cell small { color: var(--muted); font-size: 11px; line-height: 1.35; }
+.loan-records-toolbar { margin-top: 2px; }
+.cancellation-summary { display: flex; align-items: flex-start; gap: 12px; margin: 14px 0 18px; padding: 15px 16px; border: 1px solid #e5bbb7; border-radius: 11px; color: #713832; background: #fff5f4; }
+.cancellation-summary > span { display: grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; border-radius: 9px; color: #983f38; background: #f8dcda; }
+.cancellation-summary strong, .cancellation-summary small { display: block; }
+.cancellation-summary p { margin: 3px 0 5px; overflow-wrap: anywhere; }
+.cancellation-summary small { color: #7f625e; font-size: 12px; }
+.cancellation-form { margin-top: 20px; padding: 15px 16px; border: 1px solid #e7c9c6; border-radius: 11px; background: #fff9f8; }
+.cancellation-form summary { width: fit-content; color: #8b3d37; font-weight: 600; cursor: pointer; }
+.cancellation-form form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; padding-top: 14px; border-top: 1px solid #eedbd8; }
+.cancellation-form form > div:first-of-type { grid-column: 1 / -1; }
+.cancellation-form form > div:first-of-type p { margin: 3px 0 0; color: #6f5b57; }
+.cancellation-form form > .btn { grid-column: 1 / -1; justify-self: start; }
+.contract-cancellation-field { margin-top: 14px; padding: 14px; border: 1px solid #e7c9c6; border-radius: 10px; background: #fff9f8; }
+
+@media (max-width: 767.98px) {
+  .cancellation-form form { grid-template-columns: 1fr; }
+  .cancellation-form form > div:first-of-type,
+  .cancellation-form form > .btn { grid-column: auto; }
+}
+
+@media (max-width: 575.98px) {
+  .cancellation-summary { padding: 14px; }
+  .cancellation-form { padding: 14px; }
+  .cancellation-form form > .btn { width: 100%; }
 }

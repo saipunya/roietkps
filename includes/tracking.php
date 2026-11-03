@@ -173,7 +173,7 @@ function post_approval_contract_transitions(string $status): array
         'pending_review' => ['pending_review', 'draft', 'awaiting_signature', 'cancelled'],
         'awaiting_signature' => ['awaiting_signature', 'signed', 'cancelled'],
         'signed' => ['signed', 'pending_disbursement', 'cancelled'],
-        'pending_disbursement' => ['pending_disbursement'],
+        'pending_disbursement' => ['pending_disbursement', 'cancelled'],
         'active' => ['active'],
         'completed' => ['completed', 'closed'],
         'closed' => ['closed'],
@@ -233,6 +233,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $startDate = post_approval_date(post_text('start_date'), 'วันที่เริ่มสัญญา', false);
                 $maturityDate = post_approval_date(post_text('maturity_date'), 'วันที่ครบกำหนดสัญญา', false);
                 $targetStatus = post_text('contract_status');
+                $cancellationReason = post_text('cancellation_reason');
                 if ($contractNo !== '' && (!preg_match('/\A[A-Za-z0-9._\/-]{1,50}\z/', $contractNo))) {
                     throw new DomainException('เลขที่สัญญาใช้ได้เฉพาะภาษาอังกฤษ ตัวเลข จุด ขีดกลาง ขีดล่าง และเครื่องหมายทับ');
                 }
@@ -244,6 +245,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!in_array($targetStatus, post_approval_contract_transitions($contract['status']), true)) {
                     throw new DomainException('ไม่สามารถเปลี่ยนสัญญาไปยังสถานะที่เลือกได้');
                 }
+                $isCancellation = $targetStatus === 'cancelled' && $contract['status'] !== 'cancelled';
+                if ($isCancellation && (mb_strlen($cancellationReason, 'UTF-8') < 5 || mb_strlen($cancellationReason, 'UTF-8') > 1000)) {
+                    throw new DomainException('กรุณาระบุเหตุผลการยกเลิกสัญญา 5–1,000 ตัวอักษร');
+                }
                 if (!in_array($targetStatus, ['awaiting_preparation', 'draft', 'cancelled'], true) && $contractNo === '') {
                     throw new DomainException('กรุณาระบุเลขที่สัญญาก่อนส่งตรวจสัญญา');
                 }
@@ -251,14 +256,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new DomainException('กรุณาระบุวันที่เริ่มและวันที่ครบกำหนดสัญญา');
                 }
                 $signedAt = $targetStatus === 'signed' && !$contract['signed_at'] ? gmdate('Y-m-d H:i:s') : $contract['signed_at'];
-                $query = $db->prepare('UPDATE loan_contracts SET contract_no = ?, start_date = ?, maturity_date = ?, status = ?, signed_at = ? WHERE id = ?');
-                $query->execute([$contractNo ?: null, $startDate, $maturityDate, $targetStatus, $signedAt, $contractId]);
-                post_approval_audit($db, (int) $currentUser['id'], 'contract.update', 'loan_contract', $contractId, ['contract_no' => $contract['contract_no'], 'status' => $contract['status']], ['contract_no' => $contractNo ?: null, 'status' => $targetStatus]);
-                if ($targetStatus !== 'awaiting_preparation') {
+                if ($isCancellation) {
+                    $query = $db->prepare("UPDATE loan_contracts SET contract_no = ?, start_date = ?, maturity_date = ?, status = 'cancelled', signed_at = ?, cancelled_at = UTC_TIMESTAMP(), cancelled_by = ?, cancellation_reason = ? WHERE id = ?");
+                    $query->execute([$contractNo ?: null, $startDate, $maturityDate, $signedAt, (int) $currentUser['id'], $cancellationReason, $contractId]);
+                } else {
+                    $query = $db->prepare('UPDATE loan_contracts SET contract_no = ?, start_date = ?, maturity_date = ?, status = ?, signed_at = ? WHERE id = ?');
+                    $query->execute([$contractNo ?: null, $startDate, $maturityDate, $targetStatus, $signedAt, $contractId]);
+                }
+                post_approval_audit($db, (int) $currentUser['id'], $isCancellation ? 'contract.cancel' : 'contract.update', 'loan_contract', $contractId, ['contract_no' => $contract['contract_no'], 'status' => $contract['status']], ['contract_no' => $contractNo ?: null, 'status' => $targetStatus, 'reason' => $isCancellation ? $cancellationReason : null]);
+                if ($isCancellation && notification_schema_ready($db)) {
+                    $db->prepare("UPDATE workflow_tasks SET status = 'cancelled', completed_at = COALESCE(completed_at, UTC_TIMESTAMP()), completed_by = ? WHERE task_type = 'contract_preparation' AND entity_type = 'loan_application' AND entity_id = ? AND status IN ('open', 'in_progress')")
+                        ->execute([(int) $currentUser['id'], (int) $contract['loan_application_id']]);
+                } elseif ($targetStatus !== 'awaiting_preparation') {
                     workflow_complete_tasks($db, 'contract_preparation', 'loan_application', (int) $contract['loan_application_id'], (int) $currentUser['id']);
                 }
+                if ($isCancellation) {
+                    $recipients = notification_active_user_ids($db, 'cooperative_user', null, (int) $contract['cooperative_id']);
+                    if (!empty($contract['assigned_officer_id'])) {
+                        $recipients[] = (int) $contract['assigned_officer_id'];
+                    }
+                    $recipients = array_merge($recipients, notification_provincial_user_ids($db, (int) $contract['province_id']));
+                    $recipients = array_values(array_filter(array_unique(array_map('intval', $recipients)), static function ($userId) use ($currentUser) {
+                        return $userId > 0 && $userId !== (int) $currentUser['id'];
+                    }));
+                    notification_create_for_users($db, $recipients, 'contract_cancelled', 'สัญญาถูกยกเลิก', 'สัญญา ' . ($contractNo ?: $contract['application_no']) . ' ถูกยกเลิก: ' . mb_substr($cancellationReason, 0, 180, 'UTF-8'), 'urgent', 'dashboard.php?page=contracts&contract=' . $contractId, 'contract:' . $contractId . ':cancelled', 'loan_contract', $contractId);
+                }
                 $db->commit();
-                $_SESSION['tracking_notice'] = 'บันทึกข้อมูลสัญญาแล้ว';
+                $_SESSION['tracking_notice'] = $isCancellation ? 'ยกเลิกสัญญาแล้ว ระบบเก็บเหตุผลและประวัติการดำเนินการเรียบร้อย' : 'บันทึกข้อมูลสัญญาแล้ว';
                 header('Location: dashboard.php?page=contracts&contract=' . $contractId, true, 303);
                 exit;
             }
@@ -577,7 +601,7 @@ $overdueUpdate->execute($trackingScopeParameters);
 
 $query = $db->prepare("SELECT
     lc.*, a.application_no, a.purpose, a.assigned_officer_id,
-    c.name AS organization_name, c.province_id, u.full_name AS officer_name,
+    c.name AS organization_name, c.province_id, u.full_name AS officer_name, canceller.full_name AS cancelled_by_name,
     (SELECT COUNT(*) FROM repayment_schedules rs WHERE rs.contract_id = lc.id) AS schedule_count,
     (SELECT COUNT(*) FROM repayment_schedules rs WHERE rs.contract_id = lc.id AND (rs.status = 'overdue' OR (rs.due_date < CURRENT_DATE() AND rs.status IN ('scheduled', 'partial')))) AS overdue_count,
     (SELECT MIN(rs.due_date) FROM repayment_schedules rs WHERE rs.contract_id = lc.id AND rs.status IN ('scheduled', 'partial', 'overdue')) AS next_due_date,
@@ -586,6 +610,7 @@ $query = $db->prepare("SELECT
     JOIN loan_applications a ON a.id = lc.loan_application_id
     JOIN cooperatives c ON c.id = lc.cooperative_id
     LEFT JOIN users u ON u.id = a.assigned_officer_id
+    LEFT JOIN users canceller ON canceller.id = lc.cancelled_by
     WHERE {$trackingScopeSql}
     ORDER BY FIELD(lc.status, 'active', 'pending_disbursement', 'signed', 'awaiting_signature', 'pending_review', 'draft', 'awaiting_preparation', 'completed', 'closed', 'cancelled'), COALESCE(lc.maturity_date, '9999-12-31'), lc.id DESC");
 $query->execute($trackingScopeParameters);

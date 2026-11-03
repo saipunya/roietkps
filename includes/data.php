@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/loan-status.php';
+
 function public_dashboard_value(PDO $db, string $sql, array $parameters = [])
 {
     $query = $db->prepare($sql);
@@ -26,22 +28,6 @@ function public_dashboard_month_label(string $monthKey): string
 
     $date = DateTimeImmutable::createFromFormat('!Y-m', $monthKey);
     return $date ? $monthNames[(int) $date->format('n')] : $monthKey;
-}
-
-function public_loan_status_label(string $status): string
-{
-    $labels = [
-        'draft' => 'ฉบับร่าง',
-        'submitted' => 'ส่งตรวจแล้ว',
-        'promotion_review' => 'เจ้าหน้าที่ส่งเสริมกำลังตรวจ',
-        'revision_requested' => 'ส่งกลับแก้ไข',
-        'province_review' => 'รอจังหวัดตรวจสอบ',
-        'approved' => 'อนุมัติแล้ว',
-        'rejected' => 'ไม่อนุมัติ',
-        'cancelled' => 'ยกเลิก',
-    ];
-
-    return $labels[$status] ?? $status;
 }
 
 function load_public_dashboard_data(PDO $db, bool $includeRecentLoans = false): array
@@ -76,7 +62,7 @@ function load_public_dashboard_data(PDO $db, bool $includeRecentLoans = false): 
     );
     $waitingDocuments = (int) public_dashboard_value(
         $db,
-        "SELECT COUNT(*) FROM loan_applications a WHERE a.status = 'revision_requested' OR EXISTS (SELECT 1 FROM loan_documents d WHERE d.loan_application_id = a.id AND d.status = 'needs_revision' AND NOT EXISTS (SELECT 1 FROM loan_documents newer WHERE newer.replaces_document_id = d.id))"
+        "SELECT COUNT(*) FROM loan_applications a WHERE a.status IN ('draft', 'submitted', 'promotion_review', 'revision_requested') AND (a.status = 'revision_requested' OR EXISTS (SELECT 1 FROM loan_documents d WHERE d.loan_application_id = a.id AND d.status = 'needs_revision' AND NOT EXISTS (SELECT 1 FROM loan_documents newer WHERE newer.replaces_document_id = d.id)))"
     );
 
     $currentMonth = new DateTimeImmutable('first day of this month 00:00:00');
@@ -105,22 +91,27 @@ function load_public_dashboard_data(PDO $db, bool $includeRecentLoans = false): 
     }
 
     $statusCounts = $db->query("SELECT
-        SUM(status = 'approved') AS approved_count,
-        SUM(status IN ('submitted', 'promotion_review', 'province_review')) AS review_count,
-        SUM(status = 'revision_requested') AS revision_count,
-        SUM(status IN ('draft', 'rejected', 'cancelled')) AS other_count
-        FROM loan_applications")->fetch() ?: [];
+        SUM(a.status = 'draft') AS draft_count,
+        SUM(a.status IN ('submitted', 'promotion_review', 'province_review')) AS pending_count,
+        SUM(a.status = 'revision_requested') AS revision_count,
+        SUM(a.status = 'approved' AND (lc.status IS NULL OR lc.status NOT IN ('completed', 'closed', 'cancelled'))) AS approved_count,
+        SUM(a.status = 'approved' AND lc.status IN ('completed', 'closed')) AS completed_count,
+        SUM(a.status = 'cancelled' OR lc.status = 'cancelled') AS cancelled_count,
+        SUM(a.status = 'rejected') AS rejected_count
+        FROM loan_applications a
+        LEFT JOIN loan_contracts lc ON lc.loan_application_id = a.id")->fetch() ?: [];
 
     $recentLoans = [];
     if ($includeRecentLoans) {
-        $query = $db->query("SELECT a.application_no, a.requested_amount, a.status, a.created_at, c.name AS organization_name FROM loan_applications a JOIN cooperatives c ON c.id = a.cooperative_id ORDER BY a.created_at DESC, a.id DESC LIMIT 4");
+        $query = $db->query("SELECT a.application_no, a.requested_amount, a.status, a.created_at, c.name AS organization_name, lc.status AS contract_status FROM loan_applications a JOIN cooperatives c ON c.id = a.cooperative_id LEFT JOIN loan_contracts lc ON lc.loan_application_id = a.id ORDER BY a.created_at DESC, a.id DESC LIMIT 4");
         foreach ($query->fetchAll() as $row) {
+            $lifecycle = loan_lifecycle_status($row['status'], $row['contract_status']);
             $recentLoans[] = [
                 'application_no' => $row['application_no'],
                 'organization_name' => $row['organization_name'],
                 'amount' => (float) $row['requested_amount'],
                 'date' => date('d/m/Y', strtotime($row['created_at'])),
-                'status' => public_loan_status_label($row['status']),
+                'status' => $lifecycle['label'],
             ];
         }
     }
@@ -142,12 +133,15 @@ function load_public_dashboard_data(PDO $db, bool $includeRecentLoans = false): 
             'received' => array_values($receivedByMonth),
         ],
         'request_status' => [
-            'labels' => ['อนุมัติแล้ว', 'อยู่ระหว่างพิจารณา', 'รอแก้ไขเอกสาร', 'สถานะอื่น'],
+            'labels' => ['ฉบับร่าง', 'เสนอขออนุมัติ', 'ส่งกลับแก้ไข', 'อนุมัติ', 'เสร็จสิ้น', 'ยกเลิก', 'ไม่อนุมัติ'],
             'values' => [
-                (int) ($statusCounts['approved_count'] ?? 0),
-                (int) ($statusCounts['review_count'] ?? 0),
+                (int) ($statusCounts['draft_count'] ?? 0),
+                (int) ($statusCounts['pending_count'] ?? 0),
                 (int) ($statusCounts['revision_count'] ?? 0),
-                (int) ($statusCounts['other_count'] ?? 0),
+                (int) ($statusCounts['approved_count'] ?? 0),
+                (int) ($statusCounts['completed_count'] ?? 0),
+                (int) ($statusCounts['cancelled_count'] ?? 0),
+                (int) ($statusCounts['rejected_count'] ?? 0),
             ],
         ],
         'recent_loans' => $recentLoans,

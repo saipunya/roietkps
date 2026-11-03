@@ -1,6 +1,7 @@
 <?php if (!isset($currentUser) || !account_is_admin($currentUser)) { http_response_code(403); exit; } ?>
 <?php if ($approvalNotice): ?><div class="alert alert-success" role="status"><?= e($approvalNotice) ?></div><?php endif; ?>
 <?php if ($createdAccountCredentials): ?><div class="alert alert-warning" role="status"><strong>ข้อมูลเข้าสู่ระบบชั่วคราว — แสดงเพียงครั้งเดียว</strong><div class="mt-2">ชื่อผู้ใช้: <code class="fs-6"><?= e($createdAccountCredentials['username'] ?? '') ?></code><br>รหัสผ่าน: <code class="fs-5 fw-bold"><?= e($createdAccountCredentials['password'] ?? '') ?></code></div><p class="mb-0 mt-2">โปรดคัดลอกและส่งให้ผู้ใช้ ระบบจะบังคับให้เปลี่ยนรหัสผ่านเมื่อเข้าสู่ระบบครั้งแรก</p></div><?php endif; ?>
+<?php if ($resetAccountCredentials): ?><div class="alert alert-warning" role="status"><strong>รหัสผ่านชั่วคราวใหม่ — แสดงเพียงครั้งเดียว</strong><div class="mt-2">ชื่อผู้ใช้: <code class="fs-6"><?= e($resetAccountCredentials['username'] ?? '') ?></code><br>รหัสผ่าน: <code class="fs-5 fw-bold"><?= e($resetAccountCredentials['password'] ?? '') ?></code></div><p class="mb-0 mt-2">โปรดคัดลอกและส่งให้ผู้ใช้ รหัสผ่านเดิมและ session เดิมใช้ไม่ได้แล้ว ผู้ใช้ต้องเปลี่ยนรหัสผ่านเมื่อเข้าสู่ระบบครั้งถัดไป</p></div><?php endif; ?>
 <?php if ($approvalError): ?><div class="alert alert-danger" role="alert"><?= e($approvalError) ?></div><?php endif; ?>
 
 <?php if ($showCreateAccount):
@@ -54,6 +55,14 @@
       </div>
       <div class="approval-actions mt-3"><button class="btn btn-primary" type="submit"><?= app_icon('check') ?> บันทึกข้อมูลผู้ใช้งาน</button></div>
     </form>
+    <section class="account-password-management" id="accountPassword" aria-labelledby="accountPasswordTitle">
+      <div><h3 id="accountPasswordTitle">กำหนดรหัสผ่านใหม่</h3><p>ระบบจะสุ่มรหัสผ่านชั่วคราว 8 ตัวอักษร ยุติ session เดิม และบังคับให้ผู้ใช้เปลี่ยนรหัสผ่านเมื่อเข้าสู่ระบบ</p></div>
+      <form action="dashboard.php?page=users" method="post" data-confirm="ยืนยันการกำหนดรหัสผ่านชั่วคราวใหม่ให้ผู้ใช้งานนี้?">
+        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="reset_account_password"><input type="hidden" name="user_id" value="<?= (int) $managedAccount['id'] ?>"><input type="hidden" name="return_status" value="<?= e($managedAccount['status']) ?>">
+        <label class="form-label" for="passwordResetReason">เหตุผลการกำหนดรหัสผ่านใหม่</label><textarea class="form-control" id="passwordResetReason" name="password_reset_reason" rows="3" minlength="3" maxlength="500" required><?= e($_SERVER['REQUEST_METHOD'] === 'POST' && post_text('operation') === 'reset_account_password' ? post_text('password_reset_reason') : '') ?></textarea>
+        <button class="btn btn-outline-primary mt-3" type="submit"><?= app_icon('lock') ?> สร้างรหัสผ่านชั่วคราวใหม่</button>
+      </form>
+    </section>
     <section class="account-status-management" id="accountStatus" aria-labelledby="accountStatusTitle">
       <div><h3 id="accountStatusTitle"><?= $managedAccount['status'] === 'active' ? 'ระงับบัญชีผู้ใช้งาน' : 'เปิดใช้งานบัญชีอีกครั้ง' ?></h3><p><?= $managedAccount['status'] === 'active' ? 'ผู้ใช้งานจะออกจากระบบทันทีและไม่สามารถเข้าสู่ระบบได้' : 'ผู้ใช้งานจะสามารถเข้าสู่ระบบด้วยรหัสผ่านเดิมได้อีกครั้ง' ?></p></div>
       <form action="dashboard.php?page=users" method="post" data-confirm="<?= $managedAccount['status'] === 'active' ? 'ยืนยันการระงับบัญชีผู้ใช้งานนี้?' : 'ยืนยันการเปิดใช้งานบัญชีนี้อีกครั้ง?' ?>">

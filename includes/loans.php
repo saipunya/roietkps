@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/loan-documents.php';
+require_once __DIR__ . '/loan-status.php';
 
 $loanError = '';
 $loanNotice = isset($_SESSION['loan_notice']) ? (string) $_SESSION['loan_notice'] : '';
@@ -37,6 +38,38 @@ function loan_rate(string $value, string $label): float
         throw new DomainException('กรุณากรอก' . $label . 'ให้ถูกต้อง');
     }
     return (float) $value;
+}
+
+function loan_date(string $value, string $label): string
+{
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value, new DateTimeZone('Asia/Bangkok'));
+    $errors = DateTimeImmutable::getLastErrors();
+    if (!$date || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0)) || $date->format('Y-m-d') !== $value) {
+        throw new DomainException('กรุณากรอก' . $label . 'ให้ถูกต้อง');
+    }
+    return $value;
+}
+
+function loan_display_date(?string $value): string
+{
+    if (!$value) {
+        return '—';
+    }
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+    return $date ? $date->format('d/m/Y') : $value;
+}
+
+function loan_display_datetime(?string $utcValue): string
+{
+    if (!$utcValue) {
+        return '—';
+    }
+    try {
+        $date = new DateTimeImmutable($utcValue, new DateTimeZone('UTC'));
+        return $date->setTimezone(new DateTimeZone('Asia/Bangkok'))->format('d/m/Y H:i') . ' น.';
+    } catch (Throwable $exception) {
+        return $utcValue;
+    }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -121,6 +154,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
 
+            if ($operation === 'clear_test_loan_documents') {
+                $applicationId = filter_var(post_text('application_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+                $result = loan_document_admin_clear(
+                    $db,
+                    $currentUser,
+                    $applicationId,
+                    post_text('clear_confirmation'),
+                    post_text('clear_reason')
+                );
+                $_SESSION['loan_notice'] = 'ล้างข้อมูลการส่งเอกสาร ' . number_format((int) $result['documents']) . ' ฉบับแล้ว และคืนสถานะคำขอเป็นฉบับร่าง';
+                if ((int) $result['files_failed'] > 0) {
+                    $_SESSION['loan_notice'] .= ' (มีไฟล์ตกค้าง ' . number_format((int) $result['files_failed']) . ' ไฟล์ กรุณาตรวจสอบสิทธิ์โฟลเดอร์จัดเก็บ)';
+                }
+                header('Location: dashboard.php?page=loan-documents&loan=' . $applicationId, true, 303);
+                exit;
+            }
+
+            if ($operation === 'cancel_application') {
+                $applicationId = filter_var(post_text('application_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+                loan_application_cancel(
+                    $db,
+                    $currentUser,
+                    $applicationId,
+                    post_text('cancellation_confirmation'),
+                    post_text('cancellation_reason')
+                );
+                $_SESSION['loan_notice'] = 'ยกเลิกคำขอกู้แล้ว ระบบเก็บเหตุผลและประวัติการดำเนินการเรียบร้อย';
+                header('Location: dashboard.php?page=loans&view=' . $applicationId, true, 303);
+                exit;
+            }
+
             if ($operation === 'save_application') {
                 $cooperativeLoanEditor = $currentUser['role_code'] === 'cooperative_user' && account_can($currentUser, 'loan_applications.create');
                 if (!$adminLoanEditor && !$cooperativeLoanEditor) {
@@ -143,6 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $requestedAmount = loan_money(post_text('requested_amount'), 'วงเงินที่ขอ');
                 $interestRate = loan_rate(post_text('proposed_interest_rate'), 'อัตราดอกเบี้ย');
                 $termMonths = filter_var(post_text('term_months'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 600]]);
+                $repaymentDueDate = loan_date(post_text('repayment_due_date'), 'วันครบกำหนดชำระ');
                 $collateral = post_text('collateral');
                 if (mb_strlen($purpose, 'UTF-8') < 5 || mb_strlen($purpose, 'UTF-8') > 500 || !$termMonths || mb_strlen($collateral, 'UTF-8') > 5000) {
                     throw new DomainException('กรุณาตรวจสอบวัตถุประสงค์ อัตราดอกเบี้ย และระยะเวลาชำระ');
@@ -182,24 +247,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($approvedAdminEdit) {
                         $approvedAmount = loan_money(post_text('approved_amount'), 'วงเงินอนุมัติ');
                         $approvedRate = loan_rate(post_text('approved_interest_rate'), 'อัตราดอกเบี้ยอนุมัติ');
-                        $contractQuery = $db->prepare("SELECT id, status, principal_amount, interest_rate, term_months FROM loan_contracts WHERE loan_application_id = ? AND status IN ('awaiting_preparation', 'draft') FOR UPDATE");
+                        $contractQuery = $db->prepare("SELECT id, status, principal_amount, interest_rate, term_months, start_date, maturity_date FROM loan_contracts WHERE loan_application_id = ? AND status IN ('awaiting_preparation', 'draft') FOR UPDATE");
                         $contractQuery->execute([$applicationId]);
                         $contract = $contractQuery->fetch();
                         if (!$contract) {
                             throw new DomainException('สัญญาเข้าสู่กระบวนการถัดไปแล้ว ไม่สามารถแก้ไขคำขอได้');
                         }
-                        $query = $db->prepare('UPDATE loan_applications SET assigned_officer_id = ?, purpose = ?, requested_amount = ?, proposed_interest_rate = ?, approved_amount = ?, approved_interest_rate = ?, term_months = ?, collateral = ?, admin_unlocked_at = NULL, admin_unlocked_by = NULL, admin_unlock_reason = NULL, locked_at = UTC_TIMESTAMP(), row_version = row_version + 1 WHERE id = ?');
-                        $query->execute([$assignedOfficerId, $purpose, $requestedAmount, $interestRate, $approvedAmount, $approvedRate, $termMonths, $collateral ?: null, $applicationId]);
-                        $db->prepare('UPDATE loan_contracts SET principal_amount = ?, interest_rate = ?, term_months = ?, outstanding_principal = ? WHERE id = ?')->execute([$approvedAmount, $approvedRate, $termMonths, $approvedAmount, $contract['id']]);
+                        if ($contract['start_date'] && $repaymentDueDate <= $contract['start_date']) {
+                            throw new DomainException('วันครบกำหนดชำระต้องอยู่หลังวันที่เริ่มสัญญา');
+                        }
+                        $query = $db->prepare('UPDATE loan_applications SET assigned_officer_id = ?, purpose = ?, requested_amount = ?, proposed_interest_rate = ?, approved_amount = ?, approved_interest_rate = ?, term_months = ?, repayment_due_date = ?, collateral = ?, admin_unlocked_at = NULL, admin_unlocked_by = NULL, admin_unlock_reason = NULL, locked_at = UTC_TIMESTAMP(), row_version = row_version + 1 WHERE id = ?');
+                        $query->execute([$assignedOfficerId, $purpose, $requestedAmount, $interestRate, $approvedAmount, $approvedRate, $termMonths, $repaymentDueDate, $collateral ?: null, $applicationId]);
+                        $db->prepare('UPDATE loan_contracts SET principal_amount = ?, interest_rate = ?, term_months = ?, maturity_date = ?, outstanding_principal = ? WHERE id = ?')->execute([$approvedAmount, $approvedRate, $termMonths, $repaymentDueDate, $approvedAmount, $contract['id']]);
                     } else {
-                        $query = $db->prepare('UPDATE loan_applications SET cooperative_id = ?, assigned_officer_id = ?, purpose = ?, requested_amount = ?, proposed_interest_rate = ?, term_months = ?, collateral = ?, row_version = row_version + 1 WHERE id = ?');
-                        $query->execute([$cooperativeId, $assignedOfficerId, $purpose, $requestedAmount, $interestRate, $termMonths, $collateral ?: null, $applicationId]);
+                        $query = $db->prepare('UPDATE loan_applications SET cooperative_id = ?, assigned_officer_id = ?, purpose = ?, requested_amount = ?, proposed_interest_rate = ?, term_months = ?, repayment_due_date = ?, collateral = ?, row_version = row_version + 1 WHERE id = ?');
+                        $query->execute([$cooperativeId, $assignedOfficerId, $purpose, $requestedAmount, $interestRate, $termMonths, $repaymentDueDate, $collateral ?: null, $applicationId]);
                     }
                     $db->prepare('DELETE FROM loan_guarantors WHERE loan_application_id = ?')->execute([$applicationId]);
                 } else {
                     $applicationNo = 'KPS-' . gmdate('Ym') . '-' . strtoupper(bin2hex(random_bytes(4)));
-                    $query = $db->prepare("INSERT INTO loan_applications (application_no, cooperative_id, created_by, assigned_officer_id, purpose, requested_amount, proposed_interest_rate, term_months, collateral, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')");
-                    $query->execute([$applicationNo, $cooperativeId, $currentUser['id'], $assignedOfficerId, $purpose, $requestedAmount, $interestRate, $termMonths, $collateral ?: null]);
+                    $query = $db->prepare("INSERT INTO loan_applications (application_no, cooperative_id, created_by, assigned_officer_id, purpose, requested_amount, proposed_interest_rate, term_months, repayment_due_date, collateral, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')");
+                    $query->execute([$applicationNo, $cooperativeId, $currentUser['id'], $assignedOfficerId, $purpose, $requestedAmount, $interestRate, $termMonths, $repaymentDueDate, $collateral ?: null]);
                     $applicationId = (int) $db->lastInsertId();
                 }
                 $names = isset($_POST['guarantor_name']) && is_array($_POST['guarantor_name']) ? $_POST['guarantor_name'] : [];
@@ -225,7 +293,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $auditAction = !empty($approvedAdminEdit) ? 'loan.admin_update_approved' : ($adminLoanEditor ? 'loan.admin_save_draft' : 'loan.save_draft');
                 $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, new_values, ip_hash) VALUES (?, ?, 'loan_application', ?, ?, ?)");
-                $audit->execute([(int) $currentUser['id'], $auditAction, $applicationId, json_encode(['cooperative_id' => $cooperativeId, 'assigned_officer_id' => $assignedOfficerId, 'requested_amount' => $requestedAmount, 'approved_amount' => $approvedAmount ?? null, 'term_months' => (int) $termMonths], JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
+                $audit->execute([(int) $currentUser['id'], $auditAction, $applicationId, json_encode(['cooperative_id' => $cooperativeId, 'assigned_officer_id' => $assignedOfficerId, 'requested_amount' => $requestedAmount, 'approved_amount' => $approvedAmount ?? null, 'term_months' => (int) $termMonths, 'repayment_due_date' => $repaymentDueDate], JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
                 $db->commit();
                 $_SESSION['loan_notice'] = !empty($approvedAdminEdit) ? 'บันทึกการแก้ไขและล็อกคำขอที่อนุมัติแล้วอีกครั้ง' : ($adminLoanEditor ? 'Admin บันทึกข้อมูลคำขอกู้ฉบับร่างแล้ว' : 'บันทึกคำขอกู้ฉบับร่างแล้ว');
                 header('Location: dashboard.php?page=loans&view=' . $applicationId, true, 303);
@@ -325,8 +393,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $approvedRate = loan_rate(post_text('approved_interest_rate'), 'อัตราดอกเบี้ยอนุมัติ');
                     $query = $db->prepare("UPDATE loan_applications SET status = 'approved', approved_amount = ?, approved_interest_rate = ?, province_reviewed_at = UTC_TIMESTAMP(), approved_by = ?, approved_at = UTC_TIMESTAMP(), locked_at = UTC_TIMESTAMP(), row_version = row_version + 1 WHERE id = ?");
                     $query->execute([$approvedAmount, $approvedRate, $currentUser['id'], $applicationId]);
-                    $query = $db->prepare("INSERT INTO loan_contracts (loan_application_id, cooperative_id, principal_amount, interest_rate, term_months, outstanding_principal, status, created_by) VALUES (?, ?, ?, ?, ?, ?, 'awaiting_preparation', ?)");
-                    $query->execute([$applicationId, $application['cooperative_id'], $approvedAmount, $approvedRate, $application['term_months'], $approvedAmount, $currentUser['id']]);
+                    $query = $db->prepare("INSERT INTO loan_contracts (loan_application_id, cooperative_id, principal_amount, interest_rate, term_months, maturity_date, outstanding_principal, status, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, 'awaiting_preparation', ?)");
+                    $query->execute([$applicationId, $application['cooperative_id'], $approvedAmount, $approvedRate, $application['term_months'], $application['repayment_due_date'], $approvedAmount, $currentUser['id']]);
                 } else {
                     $db->prepare('UPDATE loan_applications SET status = ?, province_reviewed_at = UTC_TIMESTAMP(), row_version = row_version + 1 WHERE id = ?')->execute([$toStatus, $applicationId]);
                 }
@@ -355,7 +423,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 [$loanScopeSql, $loanScopeParameters] = loan_scope($currentUser);
-$query = $db->prepare("SELECT a.*, c.name AS organization_name, c.organization_type, u.full_name AS officer_name, lc.id AS contract_id, lc.status AS contract_status,
+$query = $db->prepare("SELECT a.*, c.name AS organization_name, c.organization_type, c.province_id AS organization_province_id,
+    u.full_name AS officer_name, canceller.full_name AS cancelled_by_name,
+    lc.id AS contract_id, lc.status AS contract_status,
     COALESCE(document_stats.current_document_count, 0) AS current_document_count,
     COALESCE(document_stats.uploaded_document_count, 0) AS uploaded_document_count,
     COALESCE(document_stats.revision_document_count, 0) AS revision_document_count,
@@ -363,6 +433,7 @@ $query = $db->prepare("SELECT a.*, c.name AS organization_name, c.organization_t
     FROM loan_applications a
     JOIN cooperatives c ON c.id = a.cooperative_id
     LEFT JOIN users u ON u.id = a.assigned_officer_id
+    LEFT JOIN users canceller ON canceller.id = a.cancelled_by
     LEFT JOIN loan_contracts lc ON lc.loan_application_id = a.id
     LEFT JOIN (
         SELECT d.loan_application_id, COUNT(*) AS current_document_count,
@@ -390,9 +461,11 @@ foreach ($loanRows as $row) {
         break;
     }
 }
+$canCancelSelectedLoan = $selectedLoan ? loan_application_can_cancel($currentUser, $selectedLoan) : false;
 $loanGuarantors = [];
 $loanReviews = [];
 $loanDocuments = [];
+$loanDocumentClearState = ['allowed' => false, 'document_count' => 0, 'message' => ''];
 if ($selectedLoan) {
     $query = $db->prepare('SELECT * FROM loan_guarantors WHERE loan_application_id = ? ORDER BY id');
     $query->execute([$selectedLoan['id']]);
@@ -403,6 +476,9 @@ if ($selectedLoan) {
     $query = $db->prepare('SELECT d.*, uploader.full_name AS uploader_name, reviewer.full_name AS reviewer_name, EXISTS (SELECT 1 FROM loan_documents newer WHERE newer.replaces_document_id = d.id) AS has_newer FROM loan_documents d JOIN users uploader ON uploader.id = d.uploaded_by LEFT JOIN users reviewer ON reviewer.id = d.reviewed_by WHERE d.loan_application_id = ? ORDER BY d.created_at DESC, d.id DESC');
     $query->execute([$selectedLoan['id']]);
     $loanDocuments = $query->fetchAll();
+    if (account_is_admin($currentUser) && $loanDocuments) {
+        $loanDocumentClearState = loan_document_admin_clear_state($db, (int) $selectedLoan['id']);
+    }
 }
 
 $cooperativeProfileComplete = false;
