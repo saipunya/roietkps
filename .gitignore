@@ -1,3 +1,6 @@
 # Local browser verification artifacts
 .playwright-cli/
-output/playwright/
+/output/
+
+# Local FTP connection settings
+.vscode/sftp.json
