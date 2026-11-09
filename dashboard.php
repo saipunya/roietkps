@@ -43,6 +43,9 @@ try {
         require __DIR__ . '/includes/public-documents.php';
     } elseif ($page === 'notifications') {
         require __DIR__ . '/includes/notification-center.php';
+    } elseif ($page === 'reports') {
+        require_once __DIR__ . '/includes/report-data.php';
+        $reportCounts = load_report_counts(app_db(), $currentUser);
     } elseif ($page === 'dashboard') {
         require_once __DIR__ . '/includes/dashboard-data.php';
         $roleDashboard = load_role_dashboard(app_db(), $currentUser);
