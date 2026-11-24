@@ -16,6 +16,11 @@
 12. `012_record_corrections.sql` — รองรับการปลดล็อกคำขอและแก้ไขรายการรับชำระ/ติดตามโดยเก็บประวัติเดิม
 13. `013_loan_repayment_due_date.sql` — เพิ่มวันครบกำหนดชำระในคำขอกู้และส่งต่อไปยังสัญญา
 14. `014_loan_lifecycle_status.sql` — เพิ่มสิทธิ์ยกเลิก เหตุผลการยกเลิก และสถานะภาพรวมตั้งแต่เสนอขออนุมัติถึงเสร็จสิ้น
+15. `015_loan_review_attachments.sql` เพิ่มไฟล์แนบในความเห็นของเจ้าหน้าที่เมื่อส่งคำขอกลับแก้ไข
+16. `016_loan_conversations.sql` เพิ่มกระดานข้อความและไฟล์แนบแยกตามคู่ผู้สนทนาในแต่ละคำขอกู้
+17. `017_approved_loan_document_archive.sql` เก็บเฉพาะเอกสารฉบับปัจจุบันหลังอนุมัติ และกำหนดการล้างไฟล์ฉบับที่ถูกแทนที่
+18. `018_loan_document_drafts.sql` เพิ่มร่างข้อความและแยกไฟล์ที่ยังไม่ได้ส่งตรวจ
+19. `019_loan_post_approval_documents.sql` เพิ่มไฟล์สัญญาและเอกสารประกอบหลังอนุมัติ
 
 ## บทบาท
 
@@ -29,7 +34,7 @@
 | `central_officer` | เจ้าหน้าที่ส่วนกลาง | ดูข้อมูลและรายงานทุกพื้นที่ |
 | `applicant` | ผู้สมัครรออนุมัติ | ไม่มีสิทธิ์ข้อมูลจนกว่า Admin จะอนุมัติ |
 
-หนึ่งหน่วยงานมีผู้ใช้งานและคำขอกู้ได้หลายรายการ แต่ละคำขอมีผู้ค้ำ เอกสาร ความเห็น และประวัติสถานะแยกกัน เมื่อจังหวัดอนุมัติ ระบบจะสร้าง `loan_contracts` สถานะ `awaiting_preparation` โดยอัตโนมัติ
+หนึ่งหน่วยงานมีผู้ใช้งานและคำขอกู้ได้หลายรายการ แต่ละคำขอมีผู้ค้ำ เอกสาร ความเห็น และประวัติสถานะแยกกัน เมื่อจังหวัดอนุมัติ เจ้าหน้าที่จังหวัดที่รับผิดชอบสามารถแนบสัญญาและเอกสารประกอบย้อนหลังกับคำขอเดิมได้ เมื่อแนบไฟล์ประเภทสัญญาครั้งแรก ระบบจะสร้างรายการติดตามสัญญาใน `loan_contracts` สถานะ `awaiting_preparation` หากไม่มีรายการอยู่แล้ว
 
 ## กระบวนการหลัก
 
@@ -39,7 +44,7 @@
              → สร้างคำขอกู้และผู้ค้ำ
              → เจ้าหน้าที่ส่งเสริมตรวจ/ส่งกลับแก้ไข
              → เจ้าหน้าที่จังหวัดตรวจและอนุมัติ
-             → รอจัดทำสัญญา → ลงนาม → เบิกจ่าย → ติดตามชำระ → ชำระครบ/เสร็จสิ้น → ปิดสัญญา
+             → แนบไฟล์สัญญา → บันทึกข้อมูลสัญญา → ลงนาม → เบิกจ่าย → ติดตามชำระ → ชำระครบ/เสร็จสิ้น → ปิดสัญญา
 ```
 
 คำขอที่อนุมัติแล้วถูกล็อก การแก้ไขภายหลังต้องใช้สิทธิ์ `records.unlock` และบันทึกเหตุผลใน `audit_logs` ห้ามแก้ข้อมูลที่อนุมัติแล้วด้วย SQL โดยตรง
@@ -55,10 +60,13 @@
 | `organization_officer_assignments` | ประวัติการมอบหมายเจ้าหน้าที่ส่งเสริม |
 | `loan_applications` | คำขอกู้และสถานะการตรวจสอบ |
 | `loan_guarantors` | ผู้ค้ำหลายคนต่อคำขอ |
-| `organization_documents`, `loan_documents` | เอกสารระดับหน่วยงานและระดับคำขอ |
+| `organization_documents`, `loan_documents` | เอกสารระดับหน่วยงานและระดับคำขอ โดยคำขอเก็บ metadata ของฉบับที่ถูกแทนที่หลังอนุมัติ |
 | `loan_document_reviews` | ประวัติผลการตรวจเอกสารประกอบคำขอแต่ละฉบับ |
 | `loan_reviews` | ความเห็นและผลการตรวจแต่ละรอบ |
+| `loan_review_attachments` | ไฟล์แนบในความเห็นที่ส่งกลับแก้ไข |
+| `loan_messages`, `loan_message_attachments` | กระดานข้อความและไฟล์แนบของคำขอกู้ |
 | `loan_contracts` | สัญญาที่สร้างจากคำขออนุมัติ |
+| `loan_post_approval_documents` | ไฟล์สัญญาและเอกสารประกอบที่จังหวัดแนบหลังอนุมัติ |
 | `repayment_schedules`, `repayments` | ตารางชำระและรายการรับชำระ |
 | `contract_follow_ups` | ประวัติการโทร หนังสือ อีเมล หรือลงพื้นที่ติดตามสัญญา |
 | `audit_logs` | ประวัติการเปลี่ยนแปลงข้อมูลสำคัญ |
@@ -83,6 +91,11 @@ mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/012_record_corrections.sql
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/013_loan_repayment_due_date.sql
 mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/014_loan_lifecycle_status.sql
+mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/015_loan_review_attachments.sql
+mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/016_loan_conversations.sql
+mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/017_approved_loan_document_archive.sql
+mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/018_loan_document_drafts.sql
+mysql --default-character-set=utf8mb4 -h localhost -u roietkps_user -p roietkps_db < database/019_loan_post_approval_documents.sql
 ```
 
 ตรวจสอบการติดตั้งส่วนติดตามได้ด้วย:
@@ -118,7 +131,7 @@ TEST_DB_USER='test_user' php tests/loan_lifecycle_status_test.php
 */15 * * * * /usr/bin/php /path/to/roietkps/tools/run-notifications.php
 ```
 
-ให้ปรับ path ของ PHP และโครงการตามค่าจริงบนโฮสต์ คำสั่งนี้ไม่ต้องเปิดผ่านเว็บไซต์
+ให้ปรับ path ของ PHP และโครงการตามค่าจริงบนโฮสต์ คำสั่งนี้ไม่ต้องเปิดผ่านเว็บไซต์ คำสั่งเดียวกันจะล้างไฟล์เอกสารคำขอฉบับที่ถูกแทนที่หลังคำขออนุมัติและพ้นระยะพัก 180 วัน โดยเก็บ metadata และ hash ไว้ในฐานข้อมูลเสมอ กำหนด `LOAN_DOCUMENT_ARCHIVE_DAYS` เป็นจำนวนวันที่ต้องการได้
 
 ## การล้างข้อมูลทดสอบ
 

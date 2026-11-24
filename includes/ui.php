@@ -9,6 +9,7 @@ function workspace_page_definitions(): array
 {
     return [
         'dashboard' => ['title' => 'แดชบอร์ด', 'description' => 'สรุปงานและรายการที่คุณควรดำเนินการ', 'icon' => 'dashboard', 'permission' => 'dashboard.view'],
+        'executive' => ['title' => 'ภาพรวมผู้บริหาร', 'description' => 'ติดตามสถานะคำขอและสัญญาเงินกู้ทั้งจังหวัด', 'icon' => 'chart', 'permission' => 'loans.view', 'provincial_director_only' => true],
         'registry' => ['title' => 'ทะเบียนสหกรณ์', 'description' => 'ค้นหาข้อมูลสหกรณ์และพื้นที่รับผิดชอบ', 'icon' => 'building', 'permission' => 'cooperatives.view'],
         'loans' => ['title' => 'ทะเบียนเงินกู้', 'description' => 'ติดตามคำขอกู้และผลการพิจารณาในที่เดียว', 'icon' => 'document', 'permission' => 'loans.view'],
         'loan-documents' => ['title' => 'เอกสารคำขอกู้', 'description' => 'อัปโหลด แก้ไข และตรวจเอกสารคำขอกู้แยกจากข้อมูลคำขอ', 'icon' => 'folder', 'permission' => 'loans.view'],
@@ -16,7 +17,7 @@ function workspace_page_definitions(): array
         'debt' => ['title' => 'ติดตามหนี้', 'description' => 'ตรวจสอบกำหนดชำระและรายการที่ต้องติดตาม', 'icon' => 'clock', 'permission' => 'debt.view'],
         'reports' => ['title' => 'รายงาน', 'description' => 'เลือกชุดข้อมูลที่ต้องการตรวจสอบหรือส่งออก', 'icon' => 'chart', 'permission' => 'reports.view'],
         'documents' => ['title' => 'คู่มือและเอกสาร', 'description' => 'ค้นหา ดาวน์โหลด และเผยแพร่เอกสารของระบบ', 'icon' => 'folder', 'permission' => null],
-        'users' => ['title' => 'ผู้ใช้งานและสิทธิ์', 'description' => 'ตรวจคำขอสมัครสมาชิกและกำหนดสิทธิ์เข้าใช้งาน', 'icon' => 'users', 'permission' => 'users.manage'],
+        'users' => ['title' => 'ผู้ใช้งานและสิทธิ์', 'description' => 'ค้นหาบัญชี จัดการสิทธิ์ และตรวจคำขอสมัครสมาชิก', 'icon' => 'users', 'permission' => 'users.manage'],
         'notifications' => ['title' => 'งานและการแจ้งเตือน', 'description' => 'ติดตามงานที่ต้องดำเนินการ กำหนดเวลา และข่าวสารของคุณ', 'icon' => 'bell', 'permission' => 'notifications.view', 'hidden' => true],
     ];
 }

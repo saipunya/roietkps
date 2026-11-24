@@ -25,6 +25,9 @@ function notification_safe_action_url(string $url): string
     if (strlen($url) > 500 || preg_match('/[\r\n]/', $url)) {
         return 'dashboard.php';
     }
+    if (preg_match('/\Adashboard\.php\?page=loans&view=[1-9][0-9]*#(?:loan-board-(?:cooperative|province)|loan-post-approval-documents)\z/', $url)) {
+        return $url;
+    }
     if (!preg_match('/\A(?:index|dashboard)\.php\?page=(?:dashboard|registry|loans|loan-documents|contracts|debt|reports|documents|users|notifications)(?:&[A-Za-z0-9_.=%-]+)*\z/', $url)) {
         return 'dashboard.php';
     }
@@ -237,6 +240,60 @@ function tracking_officer_assigned(PDO $db, int $cooperativeId, int $officerId, 
     }
 }
 
+/**
+ * Give the newly assigned promotion officer the remaining work for loans that
+ * were deliberately transferred with an organization assignment.  Loan access
+ * itself is controlled by loan_applications.assigned_officer_id; this keeps the
+ * inbox and notification in step with that access change.
+ *
+ * @param array<int, array<string, mixed>> $loans Rows captured before the owner change.
+ */
+function tracking_loans_transferred_to_officer(PDO $db, array $loans, int $officerId, int $actorId, string $organizationName, int $provinceId): void
+{
+    if (!notification_schema_ready($db)) {
+        return;
+    }
+    foreach ($loans as $loan) {
+        $applicationId = (int) $loan['id'];
+        $status = (string) $loan['status'];
+        $reviewRound = (int) $loan['review_round'];
+        $source = 'loan:' . $applicationId . ':officer-transfer:round:' . $reviewRound . ':user:' . $officerId . ':version:' . ((int) $loan['row_version'] + 1);
+
+        // Do not leave the previous officer with an actionable review task.
+        $cancel = $db->prepare("UPDATE workflow_tasks SET status = 'cancelled', completed_at = UTC_TIMESTAMP(), completed_by = ?
+            WHERE task_type = 'promotion_review' AND entity_type = 'loan_application' AND entity_id = ?
+              AND assigned_user_id <> ? AND status IN ('open', 'in_progress')");
+        $cancel->execute([$actorId, $applicationId, $officerId]);
+
+        if ($status === 'revision_requested') {
+            workflow_task_upsert($db, [
+                'task_type' => 'promotion_revision_followup', 'entity_type' => 'loan_application', 'entity_id' => $applicationId,
+                'cooperative_id' => (int) $loan['cooperative_id'], 'province_id' => $provinceId, 'assigned_user_id' => $officerId,
+                'title' => 'ติดตามคำขอกู้ที่ส่งกลับแก้ไข ' . $loan['application_no'], 'description' => $organizationName, 'priority' => 'urgent',
+                'due_at' => notification_due_at($db, 'revision_sla', 5), 'action_url' => 'dashboard.php?page=loans&view=' . $applicationId,
+                'source_key' => $source,
+            ]);
+        }
+
+        $statusLabels = [
+            'submitted' => 'ส่งตรวจแล้ว', 'promotion_review' => 'เจ้าหน้าที่ส่งเสริมกำลังตรวจ',
+            'revision_requested' => 'ส่งกลับแก้ไข', 'province_review' => 'รอจังหวัดตรวจสอบ',
+        ];
+        notification_create(
+            $db,
+            $officerId,
+            'loan_assignment',
+            'ได้รับโอนคำขอกู้ ' . $loan['application_no'],
+            $organizationName . ' · สถานะ ' . ($statusLabels[$status] ?? $status),
+            $status === 'revision_requested' ? 'urgent' : 'warning',
+            'dashboard.php?page=loans&view=' . $applicationId,
+            $source . ':notice',
+            'loan_application',
+            $applicationId
+        );
+    }
+}
+
 function tracking_loan_submitted(PDO $db, int $applicationId, int $actorId): void
 {
     if (!notification_schema_ready($db)) {
@@ -247,6 +304,7 @@ function tracking_loan_submitted(PDO $db, int $applicationId, int $actorId): voi
         return;
     }
     workflow_complete_tasks($db, 'loan_revision', 'loan_application', $applicationId, $actorId);
+    workflow_complete_tasks($db, 'promotion_review', 'loan_application', $applicationId, $actorId);
     if ($loan['assigned_officer_id']) {
         $users = [(int) $loan['assigned_officer_id']];
         $taskType = 'promotion_review';
@@ -293,16 +351,18 @@ function tracking_promotion_reviewed(PDO $db, int $applicationId, int $actorId, 
         $actionUrl = notification_safe_action_url($revisionActionUrl ?: 'dashboard.php?page=loans&edit=' . $applicationId);
         $users = notification_active_user_ids($db, 'cooperative_user', null, (int) $loan['cooperative_id']);
         $source = 'loan:' . $applicationId . ':revision:round:' . (int) $loan['review_round'];
+        workflow_complete_tasks($db, 'loan_revision', 'loan_application', $applicationId, $actorId);
         workflow_tasks_for_users($db, $users, [
             'task_type' => 'loan_revision', 'entity_type' => 'loan_application', 'entity_id' => $applicationId,
             'cooperative_id' => (int) $loan['cooperative_id'], 'province_id' => (int) $loan['province_id'],
             'title' => 'แก้ไขคำขอกู้ ' . $loan['application_no'], 'description' => $shortComment, 'priority' => 'urgent',
             'due_at' => notification_due_at($db, 'revision_sla', 5), 'action_url' => $actionUrl,
-            'source_key' => $source,
+            'source_key' => $source . ':cooperative',
         ]);
-        notification_create_for_users($db, $users, 'loan_revision', 'คำขอกู้ถูกส่งกลับให้แก้ไข', $shortComment, 'urgent', $actionUrl, $source . ':notice', 'loan_application', $applicationId);
+        notification_create_for_users($db, $users, 'loan_revision', 'คำขอกู้ถูกส่งกลับให้แก้ไข', $shortComment, 'urgent', $actionUrl, $source . ':promotion-notice', 'loan_application', $applicationId);
         return;
     }
+    workflow_complete_tasks($db, 'loan_revision', 'loan_application', $applicationId, $actorId);
     $users = notification_provincial_user_ids($db, (int) $loan['province_id']);
     $source = 'loan:' . $applicationId . ':province:round:' . (int) $loan['review_round'];
     workflow_tasks_for_users($db, $users, [
@@ -330,28 +390,31 @@ function tracking_province_reviewed(PDO $db, int $applicationId, int $actorId, s
     $shortComment = mb_substr($comment, 0, 180, 'UTF-8');
     if ($decision === 'request_revision') {
         $source = 'loan:' . $applicationId . ':revision:round:' . (int) $loan['review_round'];
-        workflow_tasks_for_users($db, $cooperativeUsers, [
-            'task_type' => 'loan_revision', 'entity_type' => 'loan_application', 'entity_id' => $applicationId,
+        $revisionUrl = 'dashboard.php?page=loans&view=' . $applicationId;
+        workflow_complete_tasks($db, 'loan_revision', 'loan_application', $applicationId, $actorId);
+        notification_create_for_users($db, $cooperativeUsers, 'loan', 'จังหวัดส่งคำขอให้เจ้าหน้าที่ส่งเสริมตรวจแก้', $shortComment, 'normal', $revisionUrl, $source . ':province-notice', 'loan_application', $applicationId);
+        workflow_tasks_for_users($db, $officerUsers, [
+            'task_type' => 'promotion_review', 'entity_type' => 'loan_application', 'entity_id' => $applicationId,
             'cooperative_id' => (int) $loan['cooperative_id'], 'province_id' => (int) $loan['province_id'],
-            'title' => 'แก้ไขคำขอกู้ ' . $loan['application_no'], 'description' => $shortComment, 'priority' => 'urgent',
-            'due_at' => notification_due_at($db, 'revision_sla', 5), 'action_url' => 'dashboard.php?page=loans&edit=' . $applicationId,
-            'source_key' => $source,
+            'title' => 'ตรวจแก้ตามความเห็นจังหวัด ' . $loan['application_no'], 'description' => $shortComment, 'priority' => 'warning',
+            'due_at' => notification_due_at($db, 'revision_sla', 5), 'action_url' => $revisionUrl,
+            'source_key' => $source . ':promotion',
         ]);
-        notification_create_for_users($db, $cooperativeUsers, 'loan_revision', 'จังหวัดส่งคำขอกู้กลับให้แก้ไข', $shortComment, 'urgent', 'dashboard.php?page=loans&edit=' . $applicationId, $source . ':notice', 'loan_application', $applicationId);
-        notification_create_for_users($db, $officerUsers, 'loan_revision', 'จังหวัดส่งคำขอกู้กลับให้หน่วยงานแก้ไข', $loan['organization_name'] . ' ต้องแก้ไขข้อมูลเพิ่มเติม', 'warning', 'dashboard.php?page=loans&view=' . $applicationId, $source . ':officer-notice', 'loan_application', $applicationId);
+        notification_create_for_users($db, $officerUsers, 'loan_revision', 'จังหวัดส่งคำขอกู้กลับให้ตรวจแก้', $shortComment, 'warning', $revisionUrl, $source . ':officer-notice', 'loan_application', $applicationId);
         return;
     }
     if ($decision === 'approve') {
-        $message = 'คำขอกู้ ' . $loan['application_no'] . ' ได้รับอนุมัติและเข้าสู่ขั้นตอนจัดทำสัญญา';
+        $message = 'คำขอกู้ ' . $loan['application_no'] . ' ได้รับอนุมัติแล้ว';
+        $uploadUrl = 'dashboard.php?page=loans&view=' . $applicationId . '#loan-post-approval-documents';
         notification_create_for_users($db, array_merge($cooperativeUsers, $officerUsers), 'loan_approved', 'คำขอกู้ได้รับอนุมัติแล้ว', $message, 'normal', 'dashboard.php?page=loans&view=' . $applicationId, 'loan:' . $applicationId . ':approved', 'loan_application', $applicationId);
         workflow_task_upsert($db, [
             'task_type' => 'contract_preparation', 'entity_type' => 'loan_application', 'entity_id' => $applicationId,
             'cooperative_id' => (int) $loan['cooperative_id'], 'province_id' => (int) $loan['province_id'], 'assigned_user_id' => $actorId,
-            'title' => 'จัดทำสัญญา ' . $loan['application_no'], 'description' => $loan['organization_name'], 'priority' => 'warning',
-            'due_at' => notification_due_at($db, 'contract_preparation_sla', 7), 'action_url' => 'dashboard.php?page=contracts',
+            'title' => 'แนบไฟล์สัญญา ' . $loan['application_no'], 'description' => $loan['organization_name'], 'priority' => 'warning',
+            'due_at' => notification_due_at($db, 'contract_preparation_sla', 7), 'action_url' => $uploadUrl,
             'source_key' => 'loan:' . $applicationId . ':contract:user:' . $actorId,
         ]);
-        notification_create($db, $actorId, 'contract', 'มีสัญญารอจัดทำ', $loan['organization_name'] . ' ได้รับอนุมัติคำขอกู้แล้ว', 'warning', 'dashboard.php?page=contracts', 'loan:' . $applicationId . ':contract-notice:user:' . $actorId, 'loan_application', $applicationId);
+        notification_create($db, $actorId, 'contract', 'คำขอกู้รอแนบไฟล์สัญญา', $loan['organization_name'] . ' ได้รับอนุมัติคำขอกู้แล้ว', 'warning', $uploadUrl, 'loan:' . $applicationId . ':contract-notice:user:' . $actorId, 'loan_application', $applicationId);
         return;
     }
     notification_create_for_users($db, array_merge($cooperativeUsers, $officerUsers), 'loan_rejected', 'คำขอกู้ไม่ได้รับการอนุมัติ', $shortComment, 'urgent', 'dashboard.php?page=loans&view=' . $applicationId, 'loan:' . $applicationId . ':rejected', 'loan_application', $applicationId);
@@ -388,15 +451,33 @@ function tracking_sync_user_tasks(PDO $db, array $user): void
                 'action_url' => 'dashboard.php?page=registry', 'source_key' => 'cooperative:' . $cooperativeId . ':profile:user:' . $userId,
             ]);
         }
-        $query = $db->prepare("SELECT a.id, a.application_no, a.review_round, a.updated_at, c.province_id FROM loan_applications a JOIN cooperatives c ON c.id = a.cooperative_id WHERE a.cooperative_id = ? AND a.status = 'revision_requested'");
-        $query->execute([$cooperativeId]);
+        $query = $db->prepare("SELECT a.id, a.application_no, a.review_round, a.updated_at, c.province_id,
+            (SELECT r.review_stage FROM loan_reviews r WHERE r.loan_application_id = a.id AND r.review_round = a.review_round
+                AND r.decision = 'request_revision' ORDER BY r.created_at DESC, r.id DESC LIMIT 1) AS revision_stage,
+            EXISTS (SELECT 1 FROM workflow_tasks w WHERE w.entity_type = 'loan_application' AND w.entity_id = a.id
+                AND w.task_type = 'loan_revision' AND w.assigned_user_id = ? AND w.status IN ('open', 'in_progress')) AS has_revision_task
+            FROM loan_applications a JOIN cooperatives c ON c.id = a.cooperative_id
+            WHERE a.cooperative_id = ? AND a.status = 'revision_requested'");
+        $query->execute([$userId, $cooperativeId]);
+        $cancelLegacyRevisionTask = $db->prepare("UPDATE workflow_tasks SET status = 'cancelled', completed_at = UTC_TIMESTAMP()
+            WHERE source_key = ? AND status IN ('open', 'in_progress')");
         foreach ($query->fetchAll() as $loan) {
+            $source = 'loan:' . (int) $loan['id'] . ':revision:round:' . (int) $loan['review_round'];
+            if ($loan['revision_stage'] === 'province') {
+                if ($loan['has_revision_task']) {
+                    $cancelLegacyRevisionTask->execute([hash('sha256', $source . ':user:' . $userId)]);
+                }
+                continue;
+            }
+            if ($loan['has_revision_task']) {
+                continue;
+            }
             workflow_task_upsert($db, [
                 'task_type' => 'loan_revision', 'entity_type' => 'loan_application', 'entity_id' => (int) $loan['id'], 'cooperative_id' => $cooperativeId,
                 'province_id' => (int) $loan['province_id'], 'assigned_user_id' => $userId, 'title' => 'แก้ไขคำขอกู้ ' . $loan['application_no'],
                 'description' => 'ตรวจสอบความเห็นล่าสุดและส่งข้อมูลกลับ', 'priority' => 'urgent',
                 'due_at' => gmdate('Y-m-d H:i:s', strtotime($loan['updated_at'] . ' UTC') + notification_rule_days($db, 'revision_sla', 5) * 86400),
-                'action_url' => 'dashboard.php?page=loans&edit=' . (int) $loan['id'], 'source_key' => 'loan:' . (int) $loan['id'] . ':revision:round:' . (int) $loan['review_round'] . ':user:' . $userId,
+                'action_url' => 'dashboard.php?page=loans&edit=' . (int) $loan['id'], 'source_key' => $source . ':cooperative:user:' . $userId,
             ]);
         }
         return;
@@ -437,14 +518,19 @@ function tracking_sync_user_tasks(PDO $db, array $user): void
                 'action_url' => 'dashboard.php?page=loans&view=' . (int) $loan['id'], 'source_key' => 'loan:' . (int) $loan['id'] . ':province:round:' . (int) $loan['review_round'] . ':user:' . $userId,
             ]);
         }
-        $contracts = $db->prepare("SELECT a.id, a.application_no, a.cooperative_id, a.approved_at, c.name, lc.id AS contract_id FROM loan_applications a JOIN cooperatives c ON c.id = a.cooperative_id JOIN loan_contracts lc ON lc.loan_application_id = a.id WHERE c.province_id = ? AND a.approved_by = ? AND lc.status = 'awaiting_preparation'");
+        $contracts = $db->prepare("SELECT a.id, a.application_no, a.cooperative_id, a.approved_at, c.name, lc.id AS contract_id FROM loan_applications a
+            JOIN cooperatives c ON c.id = a.cooperative_id LEFT JOIN loan_contracts lc ON lc.loan_application_id = a.id
+            WHERE c.province_id = ? AND a.approved_by = ? AND a.status = 'approved' AND (lc.id IS NULL OR lc.status = 'awaiting_preparation')");
         $contracts->execute([$provinceId, $userId]);
         foreach ($contracts->fetchAll() as $loan) {
             workflow_task_upsert($db, [
                 'task_type' => 'contract_preparation', 'entity_type' => 'loan_application', 'entity_id' => (int) $loan['id'], 'cooperative_id' => (int) $loan['cooperative_id'],
-                'province_id' => $provinceId, 'assigned_user_id' => $userId, 'title' => 'จัดทำสัญญา ' . $loan['application_no'], 'description' => $loan['name'],
+                'province_id' => $provinceId, 'assigned_user_id' => $userId,
+                'title' => ($loan['contract_id'] ? 'บันทึกข้อมูลสัญญา ' : 'แนบไฟล์สัญญา ') . $loan['application_no'], 'description' => $loan['name'],
                 'priority' => 'warning', 'due_at' => gmdate('Y-m-d H:i:s', strtotime(($loan['approved_at'] ?: 'now') . ' UTC') + notification_rule_days($db, 'contract_preparation_sla', 7) * 86400),
-                'action_url' => 'dashboard.php?page=contracts&contract=' . (int) $loan['contract_id'], 'source_key' => 'loan:' . (int) $loan['id'] . ':contract:user:' . $userId,
+                'action_url' => $loan['contract_id'] ? 'dashboard.php?page=contracts&contract=' . (int) $loan['contract_id']
+                    : 'dashboard.php?page=loans&view=' . (int) $loan['id'] . '#loan-post-approval-documents',
+                'source_key' => 'loan:' . (int) $loan['id'] . ':contract:user:' . $userId,
             ]);
         }
     }

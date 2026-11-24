@@ -23,6 +23,45 @@ function loan_lifecycle_status(string $applicationStatus, ?string $contractStatu
     return ['code' => 'draft', 'label' => 'ฉบับร่าง', 'tone' => 'neutral'];
 }
 
+function loan_promotion_is_reviewer(array $actor): bool
+{
+    return $actor['role_code'] === 'promotion_officer' && account_can($actor, 'loan_applications.review_promotion');
+}
+
+function loan_promotion_can_handle_return(array $actor, array $application, ?string $revisionStage): bool
+{
+    return $application['status'] === 'revision_requested'
+        && $revisionStage === 'province'
+        && loan_promotion_is_reviewer($actor)
+        && (int) $application['assigned_officer_id'] === (int) $actor['id']
+        && (int) $application['organization_province_id'] === (int) $actor['province_id'];
+}
+
+function loan_latest_revision_stage(PDO $db, int $applicationId, int $reviewRound): ?string
+{
+    $query = $db->prepare("SELECT review_stage FROM loan_reviews
+        WHERE loan_application_id = ? AND review_round = ? AND decision = 'request_revision'
+        ORDER BY created_at DESC, id DESC LIMIT 1");
+    $query->execute([$applicationId, $reviewRound]);
+    return $query->fetchColumn() ?: null;
+}
+
+function loan_require_cooperative_revision_turn(PDO $db, int $applicationId, array $application): void
+{
+    if ($application['status'] === 'revision_requested'
+        && loan_latest_revision_stage($db, $applicationId, (int) $application['review_round']) === 'province') {
+        throw new DomainException('คำขอนี้อยู่ระหว่างเจ้าหน้าที่ส่งเสริมตรวจแก้ สหกรณ์จะแก้ไขได้เมื่อเจ้าหน้าที่ส่งกลับมา');
+    }
+}
+
+function loan_promotion_application_for_update(PDO $db, int $applicationId, int $officerId): ?array
+{
+    $query = $db->prepare('SELECT a.*, c.province_id AS organization_province_id FROM loan_applications a
+        JOIN cooperatives c ON c.id = a.cooperative_id WHERE a.id = ? AND a.assigned_officer_id = ? FOR UPDATE');
+    $query->execute([$applicationId, $officerId]);
+    return $query->fetch() ?: null;
+}
+
 function loan_application_can_cancel(array $actor, array $application): bool
 {
     if (!account_can($actor, 'loan_applications.cancel') || !empty($application['contract_id'])) {

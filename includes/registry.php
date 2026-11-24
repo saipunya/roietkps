@@ -193,7 +193,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$organizationId || !$officerId) {
                     throw new DomainException('กรุณาเลือกหน่วยงานและเจ้าหน้าที่');
                 }
-                $query = $db->prepare("SELECT c.id, c.province_id FROM cooperatives c WHERE c.id = ? AND c.status = 'active'");
+                $transferOpenLoans = post_text('transfer_open_loans') === '1';
+                $db->beginTransaction();
+                $query = $db->prepare("SELECT c.id, c.name, c.province_id FROM cooperatives c WHERE c.id = ? AND c.status = 'active' FOR UPDATE");
                 $query->execute([$organizationId]);
                 $organization = $query->fetch();
                 if (!$organization || (role_is_provincial($currentUser['role_code']) && (int) $organization['province_id'] !== (int) $currentUser['province_id'])) {
@@ -204,15 +206,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$query->fetchColumn()) {
                     throw new DomainException('เจ้าหน้าที่ที่เลือกไม่พร้อมใช้งานหรืออยู่นอกพื้นที่');
                 }
-                $db->beginTransaction();
-                $db->prepare("UPDATE organization_officer_assignments SET ends_on = DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY), is_primary = 0 WHERE cooperative_id = ? AND is_primary = 1 AND (ends_on IS NULL OR ends_on >= CURRENT_DATE())")->execute([$organizationId]);
-                $db->prepare("INSERT INTO organization_officer_assignments (cooperative_id, officer_user_id, assigned_by, is_primary, starts_on) VALUES (?, ?, ?, 1, CURRENT_DATE())")->execute([$organizationId, $officerId, $currentUser['id']]);
-                $db->prepare("UPDATE loan_applications SET assigned_officer_id = ? WHERE cooperative_id = ? AND assigned_officer_id IS NULL AND status IN ('submitted', 'promotion_review')")->execute([$officerId, $organizationId]);
-                $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, new_values, ip_hash) VALUES (?, 'organization.officer.assign', 'cooperative', ?, ?, ?)");
-                $audit->execute([(int) $currentUser['id'], $organizationId, json_encode(['officer_user_id' => (int) $officerId], JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
-                tracking_officer_assigned($db, (int) $organizationId, (int) $officerId, (int) $currentUser['id']);
+                $query = $db->prepare("SELECT officer_user_id FROM organization_officer_assignments
+                    WHERE cooperative_id = ? AND is_primary = 1 AND (ends_on IS NULL OR ends_on >= CURRENT_DATE())
+                    ORDER BY starts_on DESC, id DESC LIMIT 1");
+                $query->execute([$organizationId]);
+                $assignmentChanged = (int) $query->fetchColumn() !== $officerId;
+                if ($assignmentChanged) {
+                    $db->prepare("UPDATE organization_officer_assignments
+                        SET ends_on = DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY), is_primary = 0
+                        WHERE cooperative_id = ? AND is_primary = 1 AND (ends_on IS NULL OR ends_on >= CURRENT_DATE())")->execute([$organizationId]);
+                    $db->prepare("INSERT INTO organization_officer_assignments (cooperative_id, officer_user_id, assigned_by, is_primary, starts_on)
+                        VALUES (?, ?, ?, 1, CURRENT_DATE())
+                        ON DUPLICATE KEY UPDATE assigned_by = VALUES(assigned_by), is_primary = 1, ends_on = NULL")
+                        ->execute([$organizationId, $officerId, $currentUser['id']]);
+                    $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, new_values, ip_hash) VALUES (?, 'organization.officer.assign', 'cooperative', ?, ?, ?)");
+                    $audit->execute([(int) $currentUser['id'], $organizationId, json_encode(['officer_user_id' => $officerId], JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
+                }
+
+                $transferredLoans = [];
+                if ($transferOpenLoans) {
+                    $query = $db->prepare("SELECT id, application_no, cooperative_id, assigned_officer_id, status, review_round, row_version
+                        FROM loan_applications
+                        WHERE cooperative_id = ? AND (assigned_officer_id IS NULL OR assigned_officer_id <> ?)
+                          AND status IN ('submitted', 'promotion_review', 'revision_requested', 'province_review')
+                        ORDER BY id FOR UPDATE");
+                    $query->execute([$organizationId, $officerId]);
+                    $transferredLoans = $query->fetchAll();
+                    if ($transferredLoans) {
+                        $loanIds = array_map(static fn (array $loan): int => (int) $loan['id'], $transferredLoans);
+                        $placeholders = implode(',', array_fill(0, count($loanIds), '?'));
+                        $update = $db->prepare("UPDATE loan_applications SET assigned_officer_id = ?, row_version = row_version + 1 WHERE id IN ({$placeholders})");
+                        $update->execute(array_merge([$officerId], $loanIds));
+                        $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, new_values, ip_hash)
+                            VALUES (?, 'loan.officer.transfer', 'loan_application', ?, ?, ?, ?)");
+                        foreach ($transferredLoans as $loan) {
+                            $audit->execute([
+                                (int) $currentUser['id'],
+                                (int) $loan['id'],
+                                json_encode(['assigned_officer_id' => $loan['assigned_officer_id']], JSON_UNESCAPED_UNICODE),
+                                json_encode(['assigned_officer_id' => $officerId, 'source' => 'organization_assignment'], JSON_UNESCAPED_UNICODE),
+                                hash('sha256', $_SERVER['REMOTE_ADDR'] ?? ''),
+                            ]);
+                        }
+                    }
+                }
+                $pendingLoans = $db->prepare("UPDATE loan_applications SET assigned_officer_id = ?
+                    WHERE cooperative_id = ? AND assigned_officer_id IS NULL AND status IN ('submitted', 'promotion_review')");
+                $pendingLoans->execute([$officerId, $organizationId]);
+                if ($assignmentChanged || $pendingLoans->rowCount() > 0 || $transferredLoans) {
+                    tracking_officer_assigned($db, $organizationId, $officerId, (int) $currentUser['id']);
+                }
+                if ($transferredLoans) {
+                    tracking_loans_transferred_to_officer($db, $transferredLoans, $officerId, (int) $currentUser['id'], (string) $organization['name'], (int) $organization['province_id']);
+                }
                 $db->commit();
-                $_SESSION['registry_notice'] = 'มอบหมายเจ้าหน้าที่ส่งเสริมเรียบร้อยแล้ว';
+                $_SESSION['registry_notice'] = $transferredLoans
+                    ? 'มอบหมายเจ้าหน้าที่แล้ว และโอนคำขอที่กำลังดำเนินการ ' . count($transferredLoans) . ' รายการเรียบร้อยแล้ว'
+                    : ($assignmentChanged ? 'มอบหมายเจ้าหน้าที่ส่งเสริมเรียบร้อยแล้ว' : 'เจ้าหน้าที่คนนี้เป็นผู้รับผิดชอบอยู่แล้ว');
                 header('Location: dashboard.php?page=registry&view=' . (int) $organizationId, true, 303);
                 exit;
             }

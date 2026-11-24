@@ -21,6 +21,10 @@ try {
         http_response_code(403);
         exit('คุณไม่มีสิทธิ์เข้าถึงหน้านี้');
     }
+    if (!empty($pages[$page]['provincial_director_only']) && ($currentUser['role_code'] ?? '') !== 'provincial_director') {
+        http_response_code(403);
+        exit('หน้านี้สำหรับผู้บริหารสหกรณ์จังหวัดเท่านั้น');
+    }
 
     if (account_can($currentUser, 'notifications.view')) {
         $lastTrackingRefresh = isset($_SESSION['tracking_refreshed_at']) ? (int) $_SESSION['tracking_refreshed_at'] : 0;
@@ -46,6 +50,9 @@ try {
     } elseif ($page === 'reports') {
         require_once __DIR__ . '/includes/report-data.php';
         $reportCounts = load_report_counts(app_db(), $currentUser);
+    } elseif ($page === 'executive') {
+        require_once __DIR__ . '/includes/executive-dashboard.php';
+        $executiveDashboard = load_executive_dashboard(app_db(), $currentUser);
     } elseif ($page === 'dashboard') {
         require_once __DIR__ . '/includes/dashboard-data.php';
         $roleDashboard = load_role_dashboard(app_db(), $currentUser);
@@ -105,6 +112,8 @@ require __DIR__ . '/nav.php';
     if ($isDashboard) {
         require __DIR__ . '/views/dashboard-role.php';
         require_once __DIR__ . '/views/dashboard-documents.php';
+    } elseif ($page === 'executive') {
+        require __DIR__ . '/views/executive-dashboard.php';
     } elseif ($page === 'reports') {
         require __DIR__ . '/views/reports.php';
     } elseif ($page === 'registry') {

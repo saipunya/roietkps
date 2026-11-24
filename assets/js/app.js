@@ -144,6 +144,35 @@
     });
   }
 
+  const loanFileInput = document.querySelector('#loanDocumentFile[data-max-files]');
+  if (loanFileInput) {
+    const summary = document.getElementById('loanDocumentFileCount');
+    const titleField = document.getElementById('loanDocumentTitleField');
+    const titleInput = document.getElementById('loanDocumentTitle');
+    const fileCount = loanFileInput.form.elements.document_file_count;
+    function updateLoanFileSelection() {
+      const files = Array.from(loanFileInput.files);
+      const total = files.reduce((bytes, file) => bytes + file.size, 0);
+      const maxFiles = Number(loanFileInput.dataset.maxFiles);
+      let error = '';
+      if (files.length > maxFiles) {
+        error = 'เลือกได้ไม่เกิน ' + maxFiles + ' ไฟล์ต่อครั้ง กรุณาเลือกไฟล์ใหม่';
+      } else if (files.some(file => file.size < 1 || file.size > Number(loanFileInput.dataset.maxFileSize))) {
+        error = 'มีไฟล์ว่างหรือไฟล์ขนาดเกินกำหนด กรุณาตรวจขนาดและเลือกไฟล์ใหม่';
+      } else if (total > Number(loanFileInput.dataset.maxTotalSize)) {
+        error = 'ขนาดไฟล์รวมเกินกำหนด กรุณาแบ่งอัปโหลดเป็นชุดเล็กลง';
+      }
+      fileCount.value = String(files.length);
+      titleField.hidden = files.length > 1;
+      titleInput.disabled = files.length > 1;
+      loanFileInput.setCustomValidity(error);
+      summary.classList.toggle('text-danger', Boolean(error));
+      summary.textContent = error || (files.length ? 'เลือกแล้ว ' + files.length + ' ไฟล์' : '');
+    }
+    loanFileInput.addEventListener('change', updateLoanFileSelection);
+    updateLoanFileSelection();
+  }
+
   const loanOrganization = document.getElementById('loanOrganization');
   const loanOfficer = document.getElementById('loanOfficer');
   if (loanOrganization && loanOfficer) {
@@ -209,7 +238,8 @@
       let visibleCount = 0;
       rows.forEach(function (row) {
         const text = row.textContent.normalize('NFC').toLocaleLowerCase('th');
-        row.hidden = !text.includes(query) || (status.value !== '' && row.dataset.status !== status.value);
+        const matchesStatus = status.value === '' || status.value === row.dataset.status || status.value === row.dataset.workflowStatus;
+        row.hidden = !text.includes(query) || !matchesStatus;
         if (!row.hidden) visibleCount += 1;
       });
       count.textContent = 'แสดง ' + visibleCount + ' จาก ' + rows.length + ' รายการ';

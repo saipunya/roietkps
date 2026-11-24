@@ -1,7 +1,7 @@
 <?php if (!isset($currentUser) || !account_is_admin($currentUser)) { http_response_code(403); exit; } ?>
 <?php if ($approvalNotice): ?><div class="alert alert-success" role="status"><?= e($approvalNotice) ?></div><?php endif; ?>
 <?php if ($createdAccountCredentials): ?><div class="alert alert-warning" role="status"><strong>ข้อมูลเข้าสู่ระบบชั่วคราว — แสดงเพียงครั้งเดียว</strong><div class="mt-2">ชื่อผู้ใช้: <code class="fs-6"><?= e($createdAccountCredentials['username'] ?? '') ?></code><br>รหัสผ่าน: <code class="fs-5 fw-bold"><?= e($createdAccountCredentials['password'] ?? '') ?></code></div><p class="mb-0 mt-2">โปรดคัดลอกและส่งให้ผู้ใช้ ระบบจะบังคับให้เปลี่ยนรหัสผ่านเมื่อเข้าสู่ระบบครั้งแรก</p></div><?php endif; ?>
-<?php if ($resetAccountCredentials): ?><div class="alert alert-warning" role="status"><strong>รหัสผ่านชั่วคราวใหม่ — แสดงเพียงครั้งเดียว</strong><div class="mt-2">ชื่อผู้ใช้: <code class="fs-6"><?= e($resetAccountCredentials['username'] ?? '') ?></code><br>รหัสผ่าน: <code class="fs-5 fw-bold"><?= e($resetAccountCredentials['password'] ?? '') ?></code></div><p class="mb-0 mt-2">โปรดคัดลอกและส่งให้ผู้ใช้ รหัสผ่านเดิมและ session เดิมใช้ไม่ได้แล้ว ผู้ใช้ต้องเปลี่ยนรหัสผ่านเมื่อเข้าสู่ระบบครั้งถัดไป</p></div><?php endif; ?>
+<?php if ($resetAccountCredentials): ?><div class="alert alert-warning" id="resetCredentials" role="status"><strong>รหัสผ่านชั่วคราวล่าสุด (แสดงครั้งเดียว)</strong><div class="mt-2">ชื่อผู้ใช้: <code class="fs-6"><?= e($resetAccountCredentials['username'] ?? '') ?></code><br>รหัสผ่าน: <code class="fs-5 fw-bold"><?= e($resetAccountCredentials['password'] ?? '') ?></code></div><p class="mb-0 mt-2">ให้ผู้ใช้คัดลอกชื่อและรหัสผ่านชุดนี้ไปเข้าสู่ระบบ แล้วตั้งรหัสผ่านใหม่ของตนเอง</p></div><?php endif; ?>
 <?php if ($approvalError): ?><div class="alert alert-danger" role="alert"><?= e($approvalError) ?></div><?php endif; ?>
 
 <?php if ($showCreateAccount):
@@ -16,7 +16,11 @@
       <div class="row g-3">
         <div class="col-md-6"><label class="form-label" for="createdFullName">ชื่อ–นามสกุล</label><input class="form-control" id="createdFullName" name="full_name" maxlength="150" value="<?= e(post_text('full_name')) ?>" required></div>
         <div class="col-md-6"><label class="form-label" for="createdPositionTitle">ตำแหน่ง</label><input class="form-control" id="createdPositionTitle" name="position_title" maxlength="150" value="<?= e(post_text('position_title')) ?>" placeholder="เช่น นักวิชาการสหกรณ์ชำนาญการ" required></div>
-        <div class="col-md-6"><label class="form-label" for="createdUsername">ชื่อผู้ใช้งาน</label><input class="form-control" id="createdUsername" name="username" maxlength="50" pattern="[A-Za-z0-9][A-Za-z0-9._\-]{3,49}" placeholder="กรุณาใช้ภาษาอังกฤษ" value="<?= e(post_text('username')) ?>" autocomplete="off" required><p class="field-help mt-2">ใช้ภาษาอังกฤษ ตัวเลข . _ หรือ - จำนวน 4–50 ตัวอักษร</p></div>
+        <div class="col-md-6">
+          <label class="form-label" for="createdUsername">ชื่อผู้ใช้งาน</label>
+          <input class="form-control" id="createdUsername" name="username" maxlength="50" value="<?= e(post_text('username')) ?>" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="createdUsernameHelp" required>
+          <p class="field-help mt-2" id="createdUsernameHelp">ใช้ 4–50 ตัวอักษร ขึ้นต้นด้วยอักษรอังกฤษหรือตัวเลข ใช้ . _ และ - ได้ เช่น somchai_01</p>
+        </div>
         <div class="col-md-6"><label class="form-label" for="createdRole">ประเภทผู้ใช้งาน</label><select class="form-select" name="role_code" id="createdRole" required><?php foreach (assignable_roles() as $code => $name): ?><option value="<?= e($code) ?>"<?= $createdRole === $code ? ' selected' : '' ?>><?= e($name) ?></option><?php endforeach; ?></select></div>
         <div class="col-md-6" id="createdCooperativeField"><label class="form-label" for="createdCooperative">สหกรณ์ / กลุ่มเกษตรกร</label><select class="form-select" name="cooperative_id" id="createdCooperative"><option value="">โปรดเลือกหน่วยงาน</option><?php foreach ($creationCooperatives as $coop): ?><option data-province="<?= (int) $coop['province_id'] ?>" value="<?= (int) $coop['id'] ?>"<?= $createdCooperative === (string) $coop['id'] ? ' selected' : '' ?>><?= e($coop['name']) ?></option><?php endforeach; ?></select></div>
       </div>
@@ -36,19 +40,25 @@
     $managedRole = $editingPost ? post_text('role_code') : $managedAccount['role_code'];
     $managedProvince = $editingPost ? post_text('province_id') : (string) ($managedAccount['province_id'] ?? '');
     $managedCooperative = $editingPost ? post_text('cooperative_id') : (string) ($managedAccount['cooperative_id'] ?? '');
+    $manageReturnStatus = $filterStatus === 'pending' ? $managedAccount['status'] : $filterStatus;
+    $manageReturnUrl = 'dashboard.php?page=users&status=' . $manageReturnStatus;
 ?>
 <section class="surface review-panel account-management-panel mb-4" aria-labelledby="manageAccountTitle">
-  <div class="surface-heading"><div><h2 id="manageAccountTitle">จัดการบัญชีผู้ใช้งาน</h2><p><?= e($managedAccount['full_name']) ?> · <?= e($managedAccount['role_name']) ?></p></div><a class="text-link" href="dashboard.php?page=users&amp;status=<?= e($managedAccount['status']) ?>">ปิด</a></div>
+  <div class="surface-heading"><div><h2 id="manageAccountTitle">จัดการบัญชีผู้ใช้งาน</h2><p><?= e($managedAccount['full_name']) ?> · <?= e($managedAccount['role_name']) ?></p></div><a class="text-link" href="<?= e($manageReturnUrl) ?>">ปิด</a></div>
   <div class="review-body">
     <?php if ($managementProtected): ?>
       <div class="alert alert-info mb-0" role="status">บัญชีผู้ดูแลระบบและบัญชีของคุณได้รับการป้องกัน ไม่สามารถแก้ไขหรือระงับจากเมนูนี้ได้</div>
     <?php else: ?>
-    <form action="dashboard.php?page=users" method="post" id="managedAccountForm">
-      <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="update_account"><input type="hidden" name="user_id" value="<?= (int) $managedAccount['id'] ?>"><input type="hidden" name="return_status" value="<?= e($managedAccount['status']) ?>">
+    <form action="<?= e($manageReturnUrl) ?>" method="post" id="managedAccountForm">
+      <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="update_account"><input type="hidden" name="user_id" value="<?= (int) $managedAccount['id'] ?>"><input type="hidden" name="return_status" value="<?= e($manageReturnStatus) ?>">
       <div class="row g-3">
         <div class="col-md-6"><label class="form-label" for="managedFullName">ชื่อ–นามสกุล</label><input class="form-control" id="managedFullName" name="full_name" maxlength="150" value="<?= e($managedFullName) ?>" required></div>
         <div class="col-md-6"><label class="form-label" for="managedPositionTitle">ตำแหน่ง</label><input class="form-control" id="managedPositionTitle" name="position_title" maxlength="150" value="<?= e($managedPositionTitle) ?>" required></div>
-        <div class="col-md-6"><label class="form-label" for="managedUsername">ชื่อผู้ใช้งาน</label><input class="form-control" id="managedUsername" name="username" maxlength="50" pattern="[A-Za-z0-9][A-Za-z0-9._\-]{3,49}" value="<?= e($managedUsername) ?>" required><p class="field-help mt-2">ใช้ภาษาอังกฤษ ตัวเลข . _ หรือ -</p></div>
+        <div class="col-md-6">
+          <label class="form-label" for="managedUsername">ชื่อผู้ใช้งาน</label>
+          <input class="form-control" id="managedUsername" name="username" maxlength="50" value="<?= e($managedUsername) ?>" autocapitalize="none" spellcheck="false" aria-describedby="managedUsernameHelp" required>
+          <p class="field-help mt-2" id="managedUsernameHelp">ใช้ 4–50 ตัวอักษร ขึ้นต้นด้วยอักษรอังกฤษหรือตัวเลข ใช้ . _ และ - ได้ เช่น somchai_01</p>
+        </div>
         <div class="col-md-6"><label class="form-label" for="managedRole">ประเภทผู้ใช้งาน</label><select class="form-select" name="role_code" id="managedRole" required><?php foreach (assignable_roles() as $code => $name): ?><option value="<?= e($code) ?>"<?= $managedRole === $code ? ' selected' : '' ?>><?= e($name) ?></option><?php endforeach; ?></select></div>
         <div class="col-md-6" id="managedProvinceField"><label class="form-label" for="managedProvince">จังหวัดที่รับผิดชอบ</label><select class="form-select" name="province_id" id="managedProvince"><option value="">โปรดเลือกจังหวัด</option><?php foreach ($managementProvinces as $province): ?><option value="<?= (int) $province['id'] ?>"<?= $managedProvince === (string) $province['id'] ? ' selected' : '' ?>><?= e($province['name']) ?></option><?php endforeach; ?></select></div>
         <div class="col-md-6" id="managedCooperativeField"><label class="form-label" for="managedCooperative">สหกรณ์ / กลุ่มเกษตรกร</label><select class="form-select" name="cooperative_id" id="managedCooperative"><option value="">โปรดเลือกหน่วยงาน</option><?php foreach ($managementCooperatives as $coop): ?><option data-province="<?= (int) $coop['province_id'] ?>" value="<?= (int) $coop['id'] ?>"<?= $managedCooperative === (string) $coop['id'] ? ' selected' : '' ?>><?= e($coop['name']) ?></option><?php endforeach; ?></select></div>
@@ -57,11 +67,27 @@
     </form>
     <section class="account-password-management" id="accountPassword" aria-labelledby="accountPasswordTitle">
       <div><h3 id="accountPasswordTitle">กำหนดรหัสผ่านใหม่</h3><p>ระบบจะสุ่มรหัสผ่านชั่วคราว 8 ตัวอักษร ยุติ session เดิม และบังคับให้ผู้ใช้เปลี่ยนรหัสผ่านเมื่อเข้าสู่ระบบ</p></div>
-      <form action="dashboard.php?page=users" method="post" data-confirm="ยืนยันการกำหนดรหัสผ่านชั่วคราวใหม่ให้ผู้ใช้งานนี้?">
-        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="reset_account_password"><input type="hidden" name="user_id" value="<?= (int) $managedAccount['id'] ?>"><input type="hidden" name="return_status" value="<?= e($managedAccount['status']) ?>">
+      <p class="field-help mb-2">
+        เปลี่ยนรหัสผ่านล่าสุด <?= e($managedAccount['password_changed_at'] ? notification_time_label($managedAccount['password_changed_at']) : '—') ?><br>
+        ยืนยันรหัสผ่านเข้าสู่ระบบล่าสุด <?= e($managedAccount['last_login_at'] ? notification_time_label($managedAccount['last_login_at']) : 'ยังไม่เคย') ?>
+      </p>
+      <?php if ($managedAccount['locked_until'] && strtotime($managedAccount['locked_until'] . ' UTC') > time()): ?>
+        <p class="field-help mb-2">บัญชีถูกล็อกถึง <?= e(notification_time_label($managedAccount['locked_until'])) ?></p>
+      <?php endif; ?>
+      <?php if ($managedAccount['status'] !== 'active'): ?>
+        <p class="field-help mb-0">บัญชีนี้ถูกระงับอยู่ กรุณาเปิดใช้งานบัญชีในหัวข้อด้านล่างก่อน จึงกำหนดรหัสผ่านใหม่ได้</p>
+      <?php elseif ((int) $managedAccount['role_active'] !== 1): ?>
+        <p class="field-help mb-0">บทบาทของผู้ใช้นี้ถูกปิดใช้งาน กรุณาตรวจสอบบทบาทก่อนกำหนดรหัสผ่านใหม่</p>
+      <?php else: ?>
+      <?php if ((int) $managedAccount['must_change_password'] === 1): ?>
+        <p class="field-help mb-2">รอผู้ใช้เข้าสู่ระบบและตั้งรหัสผ่านใหม่</p>
+      <?php endif; ?>
+      <form action="<?= e($manageReturnUrl) ?>" method="post" data-confirm="ยืนยันการกำหนดรหัสผ่านชั่วคราวใหม่ให้ผู้ใช้งานนี้?">
+        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="reset_account_password"><input type="hidden" name="user_id" value="<?= (int) $managedAccount['id'] ?>"><input type="hidden" name="return_status" value="<?= e($manageReturnStatus) ?>">
         <label class="form-label" for="passwordResetReason">เหตุผลการกำหนดรหัสผ่านใหม่</label><textarea class="form-control" id="passwordResetReason" name="password_reset_reason" rows="3" minlength="3" maxlength="500" required><?= e($_SERVER['REQUEST_METHOD'] === 'POST' && post_text('operation') === 'reset_account_password' ? post_text('password_reset_reason') : '') ?></textarea>
         <button class="btn btn-outline-primary mt-3" type="submit"><?= app_icon('lock') ?> สร้างรหัสผ่านชั่วคราวใหม่</button>
       </form>
+      <?php endif; ?>
     </section>
     <section class="account-status-management" id="accountStatus" aria-labelledby="accountStatusTitle">
       <div><h3 id="accountStatusTitle"><?= $managedAccount['status'] === 'active' ? 'ระงับบัญชีผู้ใช้งาน' : 'เปิดใช้งานบัญชีอีกครั้ง' ?></h3><p><?= $managedAccount['status'] === 'active' ? 'ผู้ใช้งานจะออกจากระบบทันทีและไม่สามารถเข้าสู่ระบบได้' : 'ผู้ใช้งานจะสามารถเข้าสู่ระบบด้วยรหัสผ่านเดิมได้อีกครั้ง' ?></p></div>
@@ -82,10 +108,10 @@
     $selectedCooperative = $_SERVER['REQUEST_METHOD'] === 'POST' ? post_text('cooperative_id') : $defaultApprovalCooperative;
 ?>
 <section class="surface review-panel mb-4" aria-labelledby="reviewTitle">
-  <div class="surface-heading"><div><h2 id="reviewTitle">พิจารณาคำขอสมัครสมาชิก</h2><p><?= e($reviewRequest['full_name']) ?> · <?= e($reviewRequest['username']) ?></p></div><a class="text-link" href="dashboard.php?page=users">ปิด</a></div>
+  <div class="surface-heading"><div><h2 id="reviewTitle">พิจารณาคำขอสมัครสมาชิก</h2><p><?= e($reviewRequest['full_name']) ?> · <?= e($reviewRequest['username']) ?></p></div><a class="text-link" href="dashboard.php?page=users&amp;status=pending">ปิด</a></div>
   <div class="review-body">
     <p><strong>หน่วยงาน:</strong> <?= e($reviewRequest['organization']) ?><br><strong>ประเภทหน่วยงาน:</strong> <?= e(organization_type_labels()[$reviewRequest['organization_type']] ?? $reviewRequest['organization_type']) ?><br><strong>ประเภทบัญชี:</strong> <?= e(request_roles()[$reviewRequest['requested_role']]) ?></p>
-    <form action="dashboard.php?page=users" method="post" id="approvalForm">
+    <form action="dashboard.php?page=users&amp;status=pending" method="post" id="approvalForm">
       <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="review_registration"><input type="hidden" name="user_id" value="<?= (int) $reviewRequest['id'] ?>">
       <div class="row g-3">
         <div class="col-12"><label class="form-label" for="approvalRole">บทบาทที่อนุมัติ</label><select class="form-select" name="role_code" id="approvalRole" required><?php foreach (assignable_roles() as $code => $name): ?><option value="<?= e($code) ?>"<?= $selectedRole === $code ? ' selected' : '' ?>><?= e($name) ?></option><?php endforeach; ?></select></div>
@@ -99,20 +125,40 @@
 </section>
 <?php endif; ?>
 
-<section class="surface records-section" aria-label="รายการผู้ใช้งาน">
-  <div class="loan-list-heading"><div><strong>ผู้ใช้งานและสิทธิ์</strong><span>Admin เพิ่มบัญชีได้โดยไม่ต้องรอการสมัคร</span></div><a class="btn btn-primary" href="dashboard.php?page=users&amp;action=new"><?= app_icon('users') ?> เพิ่มผู้ใช้งาน</a></div>
-  <form class="records-toolbar" action="dashboard.php" method="get"><input type="hidden" name="page" value="users"><div class="search-field"><label class="visually-hidden" for="userSearch">ค้นหาผู้ใช้งาน</label><?= app_icon('search') ?><input class="form-control" type="search" id="userSearch" name="q" value="<?= e($searchUsers) ?>" maxlength="100" placeholder="ชื่อ ตำแหน่ง ชื่อผู้ใช้งาน หรือหน่วยงาน"></div><div class="status-filter"><label class="visually-hidden" for="userStatus">สถานะผู้ใช้งาน</label><select class="form-select" id="userStatus" name="status"><?php foreach ($userStatuses as $code => $label): ?><option value="<?= e($code) ?>"<?= $filterStatus === $code ? ' selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></div><button class="btn btn-outline-primary" type="submit">ค้นหา</button></form>
+<section class="surface records-section" aria-label="รายชื่อสมาชิก">
+  <div class="loan-list-heading"><div><strong>รายชื่อสมาชิก</strong></div><a class="btn btn-primary" href="dashboard.php?page=users&amp;action=new"><?= app_icon('users') ?> เพิ่มผู้ใช้งาน</a></div>
+  <form class="records-toolbar" action="dashboard.php" method="get">
+    <input type="hidden" name="page" value="users">
+    <div class="search-field">
+      <label class="visually-hidden" for="userSearch">ค้นหาผู้ใช้งาน</label><?= app_icon('search') ?>
+      <input class="form-control" type="search" id="userSearch" name="q" value="<?= e($searchUsers) ?>" maxlength="100" placeholder="ชื่อ ตำแหน่ง ชื่อผู้ใช้ หน่วยงาน หรือบทบาท">
+    </div>
+    <div class="status-filter">
+      <label class="visually-hidden" for="userStatus">สถานะผู้ใช้งาน</label>
+      <select class="form-select" id="userStatus" name="status">
+        <?php foreach ($userStatusFilters as $code => $label): ?>
+          <option value="<?= e($code) ?>"<?= $filterStatus === $code ? ' selected' : '' ?>><?= e($label) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <button class="btn btn-outline-primary" type="submit">ค้นหา</button>
+  </form>
   <div class="results-summary">พบ <?= e(number_format($userCount)) ?> บัญชี · หน้า <?= $userPage ?> / <?= $totalUserPages ?></div>
-  <?php if (!$accountRows): ?><div class="empty-state"><h2><?= $filterStatus === 'pending' ? 'ไม่มีคำขอรออนุมัติ' : 'ไม่พบบัญชีผู้ใช้งาน' ?></h2><p>เมื่อมีผู้สมัครใหม่ คำขอจะแสดงที่นี่</p></div><?php else: ?>
-  <div class="records-wrap"><table class="table records-table mb-0"><caption class="visually-hidden">บัญชีผู้ใช้งานและสถานะการอนุมัติ</caption><thead><tr><th scope="col">ผู้ใช้งาน</th><th scope="col">หน่วยงาน / ประเภทที่ขอ</th><th scope="col">สถานะ</th><th scope="col">การดำเนินการ</th></tr></thead><tbody>
+  <?php if (!$accountRows): ?>
+  <div class="empty-state">
+    <h2><?= $filterStatus === 'pending' && $searchUsers === '' ? 'ไม่มีคำขอรออนุมัติ' : 'ไม่พบบัญชีผู้ใช้งาน' ?></h2>
+    <?php if ($searchUsers !== '' || $filterStatus !== 'all'): ?><a class="text-link" href="dashboard.php?page=users">ดูสมาชิกทุกสถานะ</a><?php endif; ?>
+  </div>
+  <?php else: ?>
+  <div class="records-wrap"><table class="table records-table mb-0"><caption class="visually-hidden">บัญชีผู้ใช้งานและสถานะการอนุมัติ</caption><thead><tr><th scope="col">ผู้ใช้งาน</th><th scope="col">หน่วยงาน / บทบาท</th><th scope="col">สถานะ</th><th scope="col">การดำเนินการ</th></tr></thead><tbody>
   <?php foreach ($accountRows as $account): ?>
     <tr>
       <td class="record-primary"><strong><?= e($account['full_name']) ?></strong><?php if (!empty($account['position_title'])): ?><small><?= e($account['position_title']) ?></small><?php endif; ?><small><?= e($account['username']) ?></small></td>
-      <td data-label="หน่วยงาน"><span><?= e($account['organization'] ?? '—') ?><small class="account-meta"><?= e($account['status'] === 'pending' && $account['requested_role'] ? (request_roles()[$account['requested_role']] ?? $account['role_name']) : $account['role_name']) ?><?= $account['organization_type'] ? ' · ' . e(organization_type_labels()[$account['organization_type']] ?? $account['organization_type']) : '' ?></small></span></td>
+      <td data-label="หน่วยงาน / บทบาท"><span><?= e($account['organization'] ?? '—') ?><small class="account-meta"><?= e($account['status'] === 'pending' && $account['requested_role'] ? (request_roles()[$account['requested_role']] ?? $account['role_name']) : $account['role_name']) ?><?= $account['organization_type'] ? ' · ' . e(organization_type_labels()[$account['organization_type']] ?? $account['organization_type']) : '' ?></small></span></td>
       <td data-label="สถานะ"><span class="status-badge <?= $account['status'] === 'active' ? 'status-success' : ($account['status'] === 'pending' ? 'status-warning' : 'status-danger') ?>"><?= e($userStatuses[$account['status']]) ?></span></td>
       <td class="record-action" data-no-export>
         <?php if ($account['status'] === 'pending' && $account['requested_role']): ?>
-          <a class="btn record-button" href="dashboard.php?page=users&amp;review=<?= (int) $account['id'] ?>">พิจารณาคำขอ <?= app_icon('chevron') ?></a>
+          <a class="btn record-button" href="dashboard.php?page=users&amp;status=pending&amp;review=<?= (int) $account['id'] ?>">พิจารณาคำขอ <?= app_icon('chevron') ?></a>
         <?php elseif ((int) $account['id'] === (int) $currentUser['id']): ?>
           <span class="account-meta">บัญชีของคุณ</span>
         <?php elseif ($account['role_code'] === 'system_admin' || $account['role_code'] === 'applicant'): ?>

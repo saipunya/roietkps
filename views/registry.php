@@ -87,6 +87,8 @@
       <form action="dashboard.php?page=registry&amp;view=<?= (int) $selectedOrganization['id'] ?>" method="post" class="assignment-form">
         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="operation" value="assign_officer"><input type="hidden" name="organization_id" value="<?= (int) $selectedOrganization['id'] ?>">
         <label class="form-label" for="assignedOfficer">เจ้าหน้าที่ส่งเสริมที่รับผิดชอบ</label><div class="assignment-controls"><select class="form-select" id="assignedOfficer" name="officer_user_id" required><option value="">เลือกเจ้าหน้าที่</option><?php foreach ($availableOfficers as $officer): ?><option value="<?= (int) $officer['id'] ?>"><?= e($officer['full_name']) ?></option><?php endforeach; ?></select><button class="btn btn-primary" type="submit"><?= app_icon('users') ?> มอบหมาย</button></div>
+        <div class="form-check mt-3"><input class="form-check-input" type="checkbox" value="1" id="transferOpenLoans" name="transfer_open_loans" checked><label class="form-check-label" for="transferOpenLoans">โอนคำขอกู้ที่ยังดำเนินการให้เจ้าหน้าที่คนนี้ด้วย</label></div>
+        <p class="field-help mt-2">ใช้กับคำขอที่ส่งตรวจ กำลังตรวจ ส่งกลับแก้ไข หรือรอจังหวัดตรวจสอบ เจ้าหน้าที่คนใหม่จะเห็นปุ่มแก้ไข/ส่งต่อเมื่อคำขออยู่ในขั้นตอนที่เกี่ยวข้อง และเข้าถึงกระดานข้อความของคำขอนั้นได้</p>
         <?php if (!$availableOfficers): ?><p class="field-help mt-2">ยังไม่มีบัญชีเจ้าหน้าที่ส่งเสริมที่ใช้งานในจังหวัดนี้</p><?php endif; ?>
       </form>
       <?php endif; ?>

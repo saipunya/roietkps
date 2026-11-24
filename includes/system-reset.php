@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/loan-documents.php';
+
 function system_reset_impact(PDO $db, int $adminId): array
 {
     $query = $db->prepare(
@@ -10,7 +12,8 @@ function system_reset_impact(PDO $db, int $adminId): array
         . '(SELECT COUNT(*) FROM loan_contracts) AS loan_contracts, '
         . '(SELECT COUNT(*) FROM repayments) AS repayments, '
         . '(SELECT COUNT(*) FROM organization_documents) AS organization_documents, '
-        . '(SELECT COUNT(*) FROM loan_documents) AS loan_documents, '
+        . '((SELECT COUNT(*) FROM loan_documents) + (SELECT COUNT(*) FROM loan_review_attachments) '
+        . '+ (SELECT COUNT(*) FROM loan_message_attachments) + (SELECT COUNT(*) FROM loan_post_approval_documents)) AS loan_documents, '
         . '(SELECT COUNT(*) FROM public_documents) AS public_documents, '
         . '(SELECT COUNT(*) FROM workflow_tasks) AS workflow_tasks, '
         . '(SELECT COUNT(*) FROM notifications) AS notifications, '
@@ -26,9 +29,11 @@ function system_reset_impact(PDO $db, int $adminId): array
 
 function system_reset_storage_path(string $type): string
 {
+    if ($type === 'loan') {
+        return loan_document_storage_path();
+    }
     $folders = [
         'public' => 'public-documents',
-        'loan' => 'loan-documents',
         'organization' => 'organization-documents',
     ];
     if (!isset($folders[$type])) {
@@ -90,7 +95,11 @@ function system_reset_execute(PDO $db, array $actor, string $currentPassword): a
 
         $impact = system_reset_impact($db, $adminId);
         $publicFiles = $db->query('SELECT stored_name FROM public_documents')->fetchAll(PDO::FETCH_COLUMN);
-        $loanFiles = $db->query('SELECT stored_name FROM loan_documents')->fetchAll(PDO::FETCH_COLUMN);
+        $loanFiles = $db->query('SELECT stored_name FROM loan_documents WHERE stored_name IS NOT NULL')->fetchAll(PDO::FETCH_COLUMN);
+        $reviewFiles = $db->query('SELECT stored_name FROM loan_review_attachments FOR UPDATE')->fetchAll(PDO::FETCH_COLUMN);
+        $messageFiles = $db->query('SELECT stored_name FROM loan_message_attachments FOR UPDATE')->fetchAll(PDO::FETCH_COLUMN);
+        $postApprovalFiles = $db->query('SELECT stored_name FROM loan_post_approval_documents FOR UPDATE')->fetchAll(PDO::FETCH_COLUMN);
+        $loanFiles = array_merge($loanFiles, $reviewFiles, $messageFiles, $postApprovalFiles);
         $organizationFiles = $db->query('SELECT stored_name FROM organization_documents')->fetchAll(PDO::FETCH_COLUMN);
 
         $deleteStatements = [
@@ -103,6 +112,7 @@ function system_reset_execute(PDO $db, array $actor, string $currentPassword): a
             'DELETE FROM repayments',
             'DELETE FROM repayment_schedules',
             'DELETE FROM loan_contracts',
+            'DELETE FROM loan_post_approval_documents',
             'DELETE FROM loan_document_reviews',
             'UPDATE loan_documents SET replaces_document_id = NULL WHERE replaces_document_id IS NOT NULL',
             'DELETE FROM loan_documents',

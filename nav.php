@@ -21,6 +21,9 @@ $sidebarPages = $usesWorkspaceSidebar ? workspace_page_definitions() : $pages;
       <?php if (!empty($item['hidden'])) {
           continue;
       } ?>
+      <?php if ($usesWorkspaceSidebar && !empty($item['provincial_director_only']) && ($currentUser['role_code'] ?? '') !== 'provincial_director') {
+          continue;
+      } ?>
       <?php if ($usesWorkspaceSidebar && $item['permission'] !== null && !account_can($currentUser, $item['permission'])) {
           continue;
       } ?>

@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $createOrganization = $cooperative === 'new';
                 review_registration($db, (int) $currentUser['id'], (int) $userId, post_text('decision'), post_text('role_code'), $province === '' ? null : (int) $province, $createOrganization || $cooperative === '' ? null : (int) $cooperative, $createOrganization, post_text('review_note'));
                 $_SESSION['approval_notice'] = post_text('decision') === 'approve' ? 'อนุมัติบัญชีแล้ว ผู้สมัครเข้าสู่ระบบได้ทันที' : 'บันทึกการไม่อนุมัติแล้ว';
-                header('Location: dashboard.php?page=users', true, 303);
+                header('Location: dashboard.php?page=users&status=pending', true, 303);
                 exit;
             }
             if ($operation === 'update_account') {
@@ -60,18 +60,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'username' => post_text('username'), 'full_name' => post_text('full_name'), 'position_title' => post_text('position_title'),
                     'role_code' => post_text('role_code'), 'province_id' => post_text('province_id'), 'cooperative_id' => post_text('cooperative_id'),
                 ]);
-                $returnStatus = in_array(post_text('return_status'), ['active', 'suspended'], true) ? post_text('return_status') : 'active';
+                $returnStatus = in_array(post_text('return_status'), ['all', 'active', 'suspended'], true) ? post_text('return_status') : 'active';
                 $_SESSION['approval_notice'] = 'บันทึกข้อมูลและสิทธิ์ของผู้ใช้งานแล้ว';
                 header('Location: dashboard.php?page=users&status=' . rawurlencode($returnStatus), true, 303);
                 exit;
             }
             if ($operation === 'reset_account_password') {
                 $temporaryCredentials = reset_managed_account_password($db, (int) $currentUser['id'], (int) $userId, post_text('password_reset_reason'));
-                $returnStatus = in_array(post_text('return_status'), ['active', 'suspended'], true) ? post_text('return_status') : 'active';
+                $returnStatus = in_array(post_text('return_status'), ['all', 'active', 'suspended'], true) ? post_text('return_status') : 'active';
                 $_SESSION['reset_account_credentials'] = $temporaryCredentials;
                 $_SESSION['approval_notice'] = 'กำหนดรหัสผ่านชั่วคราวใหม่และยุติ session เดิมของผู้ใช้งานแล้ว';
                 unset($temporaryCredentials);
-                header('Location: dashboard.php?page=users&status=' . rawurlencode($returnStatus) . '&edit=' . (int) $userId . '#accountPassword', true, 303);
+                header('Location: dashboard.php?page=users&status=' . rawurlencode($returnStatus) . '&edit=' . (int) $userId . '#resetCredentials', true, 303);
                 exit;
             }
             if ($operation === 'set_account_status') {
@@ -103,25 +103,44 @@ if ($showCreateAccount) {
 }
 
 $userStatuses = ['pending' => 'รออนุมัติ', 'active' => 'ใช้งาน', 'suspended' => 'ไม่อนุมัติ / ระงับ'];
-$filterStatus = isset($_GET['status']) && is_string($_GET['status']) && array_key_exists($_GET['status'], $userStatuses) ? $_GET['status'] : 'pending';
+$userStatusFilters = ['all' => 'ทุกสถานะ'] + $userStatuses;
+$reviewId = isset($_GET['review']) && is_scalar($_GET['review']) ? (int) $_GET['review'] : 0;
+$requestedStatus = $_GET['status'] ?? '';
+$filterStatus = is_string($requestedStatus) && isset($userStatusFilters[$requestedStatus])
+    ? $requestedStatus
+    : ($reviewId > 0 ? 'pending' : 'all');
 $searchUsers = isset($_GET['q']) && is_string($_GET['q']) ? mb_substr(trim($_GET['q']), 0, 100, 'UTF-8') : '';
-$where = 'u.status = ?';
-$parameters = [$filterStatus];
+$conditions = [];
+$parameters = [];
+if ($filterStatus !== 'all') {
+    $conditions[] = 'u.status = ?';
+    $parameters[] = $filterStatus;
+}
+$organization = 'COALESCE(c.name, q.organization, p.name)';
 if ($searchUsers !== '') {
     $like = '%' . strtr($searchUsers, ['!' => '!!', '%' => '!%', '_' => '!_']) . '%';
-    $where .= " AND (u.full_name LIKE ? ESCAPE '!' OR u.position_title LIKE ? ESCAPE '!' OR u.username LIKE ? ESCAPE '!' OR q.organization LIKE ? ESCAPE '!')";
-    array_push($parameters, $like, $like, $like, $like);
+    $conditions[] = "(u.full_name LIKE ? ESCAPE '!' OR u.position_title LIKE ? ESCAPE '!'
+        OR u.username LIKE ? ESCAPE '!' OR {$organization} LIKE ? ESCAPE '!'
+        OR p.name LIKE ? ESCAPE '!' OR r.name LIKE ? ESCAPE '!')";
+    array_push($parameters, $like, $like, $like, $like, $like, $like);
 }
-$query = $db->prepare('SELECT COUNT(*) FROM users u LEFT JOIN registration_requests q ON q.user_id = u.id WHERE ' . $where);
+$where = $conditions ? ' WHERE ' . implode(' AND ', $conditions) : '';
+$directory = 'FROM users u
+    JOIN roles r ON r.id = u.role_id
+    LEFT JOIN registration_requests q ON q.user_id = u.id
+    LEFT JOIN cooperatives c ON c.id = u.cooperative_id
+    LEFT JOIN provinces p ON p.id = u.province_id' . $where;
+$query = $db->prepare('SELECT COUNT(*) ' . $directory);
 $query->execute($parameters);
 $userCount = (int) $query->fetchColumn();
 $userPage = isset($_GET['p']) && is_scalar($_GET['p']) ? max(1, (int) $_GET['p']) : 1;
 $totalUserPages = max(1, (int) ceil($userCount / 20));
 $userPage = min($userPage, $totalUserPages);
-$query = $db->prepare('SELECT u.id, u.username, u.full_name, u.position_title, u.status, u.data_scope, u.province_id, u.cooperative_id, r.code AS role_code, r.name AS role_name, q.organization, q.organization_type, q.requested_role, q.reviewed_at, q.review_note, a.full_name AS reviewer_name FROM users u JOIN roles r ON r.id = u.role_id LEFT JOIN registration_requests q ON q.user_id = u.id LEFT JOIN users a ON a.id = q.reviewed_by WHERE ' . $where . ' ORDER BY u.created_at, u.id LIMIT 20 OFFSET ' . (($userPage - 1) * 20));
+$query = $db->prepare("SELECT u.id, u.username, u.full_name, u.position_title, u.status, r.code AS role_code,
+    r.name AS role_name, {$organization} AS organization, COALESCE(c.organization_type, q.organization_type) AS organization_type,
+    q.requested_role {$directory} ORDER BY u.created_at, u.id LIMIT 20 OFFSET " . (($userPage - 1) * 20));
 $query->execute($parameters);
 $accountRows = $query->fetchAll();
-$reviewId = isset($_GET['review']) && is_scalar($_GET['review']) ? (int) $_GET['review'] : 0;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $approvalError !== '') {
     $reviewId = (int) post_text('user_id');
 }
@@ -155,7 +174,10 @@ $managedAccount = null;
 $managementProvinces = [];
 $managementCooperatives = [];
 if ($manageId > 0) {
-    $query = $db->prepare("SELECT u.id, u.username, u.full_name, u.position_title, u.status, u.data_scope, u.province_id, u.cooperative_id, r.code AS role_code, r.name AS role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? AND u.status IN ('active', 'suspended')");
+    $query = $db->prepare("SELECT u.id, u.username, u.full_name, u.position_title, u.status, u.data_scope, u.province_id, u.cooperative_id,
+        u.locked_until, u.last_login_at, u.password_changed_at, u.must_change_password,
+        r.code AS role_code, r.name AS role_name, r.is_active AS role_active
+        FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? AND u.status IN ('active', 'suspended')");
     $query->execute([$manageId]);
     $managedAccount = $query->fetch() ?: null;
     if ($managedAccount) {

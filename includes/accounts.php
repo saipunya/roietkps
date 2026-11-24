@@ -149,14 +149,23 @@ function authenticate_account(PDO $db, string $username, string $password): arra
     $valid = strlen($password) <= 72 && strpos($password, "\0") === false && password_verify($password, $user ? $user['password_hash'] : $dummyHash);
     $failure = 'ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง หรือบัญชีถูกระงับชั่วคราว';
     $locked = $user && $user['locked_until'] && strtotime($user['locked_until'] . ' UTC') > time();
+    if ($valid && $locked) {
+        throw new DomainException('บัญชีถูกล็อกชั่วคราวจากการลองเข้าสู่ระบบหลายครั้ง กรุณาลองใหม่เมื่อครบ 15 นาทีหรือติดต่อ Admin');
+    }
     if (!$user || !$valid || $locked) {
         if ($user && !$locked) {
-            $db->prepare('UPDATE users SET failed_login_attempts = IF(locked_until IS NOT NULL AND locked_until <= UTC_TIMESTAMP(), 1, LEAST(failed_login_attempts + 1, 65535)), locked_until = IF(failed_login_attempts >= 5, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 15 MINUTE), NULL) WHERE id = ?')->execute([$user['id']]);
+            // An attempt verified against the old password must not lock the reset account.
+            $db->prepare('UPDATE users SET failed_login_attempts = IF(locked_until IS NOT NULL AND locked_until <= UTC_TIMESTAMP(), 1, LEAST(failed_login_attempts + 1, 65535)), locked_until = IF(failed_login_attempts >= 5, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 15 MINUTE), NULL)
+                WHERE id = ? AND auth_version = ? AND (locked_until IS NULL OR locked_until <= UTC_TIMESTAMP())')
+                ->execute([$user['id'], $user['auth_version']]);
         }
         throw new DomainException($failure);
     }
     if ($user['status'] === 'pending') {
         throw new DomainException('บัญชีของคุณกำลังรอ Admin อนุมัติ กรุณาลองเข้าสู่ระบบภายหลัง');
+    }
+    if ($user['status'] === 'suspended') {
+        throw new DomainException('บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบเพื่อเปิดใช้งานบัญชี');
     }
     if ($user['status'] !== 'active' || (int) $user['role_active'] !== 1 || $user['role_code'] === 'applicant') {
         throw new DomainException($failure);
@@ -315,7 +324,7 @@ function create_managed_account(PDO $db, int $actorId, array $values, string $pa
     $cooperativeId = filter_var($values['cooperative_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
 
     if (!preg_match('/\A[A-Za-z0-9][A-Za-z0-9._-]{3,49}\z/', $username)) {
-        throw new DomainException('ชื่อผู้ใช้งานต้องเป็นภาษาอังกฤษ ตัวเลข . _ หรือ - จำนวน 4–50 ตัวอักษร');
+        throw new DomainException('ชื่อผู้ใช้งานต้องมี 4–50 ตัวอักษร ขึ้นต้นด้วยอักษรอังกฤษหรือตัวเลข และใช้ได้เฉพาะอักษรอังกฤษ ตัวเลข . _ หรือ -');
     }
     if (mb_strlen($fullName, 'UTF-8') < 2 || mb_strlen($fullName, 'UTF-8') > 150) {
         throw new DomainException('กรุณากรอกชื่อ–นามสกุลให้ถูกต้อง');
@@ -399,7 +408,7 @@ function update_managed_account(PDO $db, int $actorId, int $userId, array $value
     $provinceId = !empty($values['province_id']) ? (int) $values['province_id'] : null;
     $cooperativeId = !empty($values['cooperative_id']) ? (int) $values['cooperative_id'] : null;
     if (!preg_match('/\A[A-Za-z0-9][A-Za-z0-9._-]{3,49}\z/', $username)) {
-        throw new DomainException('ชื่อผู้ใช้งานต้องเป็นภาษาอังกฤษ ตัวเลข . _ หรือ - จำนวน 4–50 ตัว');
+        throw new DomainException('ชื่อผู้ใช้งานต้องมี 4–50 ตัวอักษร ขึ้นต้นด้วยอักษรอังกฤษหรือตัวเลข และใช้ได้เฉพาะอักษรอังกฤษ ตัวเลข . _ หรือ -');
     }
     if (!mb_check_encoding($fullName, 'UTF-8') || mb_strlen($fullName, 'UTF-8') < 2 || mb_strlen($fullName, 'UTF-8') > 150) {
         throw new DomainException('กรุณากรอกชื่อ–นามสกุล 2–150 ตัวอักษร');
@@ -488,11 +497,19 @@ function reset_managed_account_password(PDO $db, int $actorId, int $userId, stri
             throw new DomainException('ไม่สามารถกำหนดรหัสผ่านใหม่ให้บัญชีนี้ได้');
         }
 
-        $target = $db->prepare("SELECT u.id, u.username, u.status, u.must_change_password, r.code AS role_code FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? AND u.status IN ('active', 'suspended') FOR UPDATE");
+        $target = $db->prepare("SELECT u.id, u.username, u.status, u.must_change_password, r.code AS role_code, r.is_active AS role_active FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ? FOR UPDATE");
         $target->execute([$userId]);
         $account = $target->fetch();
         if (!$account || in_array($account['role_code'], ['system_admin', 'applicant'], true)) {
             throw new DomainException('บัญชีนี้ไม่สามารถกำหนดรหัสผ่านใหม่จากเมนูนี้ได้');
+        }
+        if ($account['status'] !== 'active') {
+            throw new DomainException($account['status'] === 'suspended'
+                ? 'บัญชีนี้ถูกระงับอยู่ กรุณาเปิดใช้งานบัญชีก่อนกำหนดรหัสผ่านใหม่'
+                : 'บัญชีนี้ยังไม่พร้อมใช้งาน จึงไม่สามารถกำหนดรหัสผ่านใหม่ได้');
+        }
+        if ((int) $account['role_active'] !== 1) {
+            throw new DomainException('บทบาทของผู้ใช้นี้ถูกปิดใช้งาน กรุณาตรวจสอบบทบาทก่อนกำหนดรหัสผ่านใหม่');
         }
 
         $passwordHash = password_hash($temporaryPassword, PASSWORD_BCRYPT, ['cost' => 12]);

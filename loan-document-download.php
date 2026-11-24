@@ -1,9 +1,12 @@
 <?php
 require_once __DIR__ . '/includes/accounts.php';
 require_once __DIR__ . '/includes/loan-documents.php';
+require_once __DIR__ . '/includes/loan-conversations.php';
 
 $currentUser = require_account();
-$documentId = isset($_GET['id']) ? filter_var($_GET['id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) : false;
+$downloadType = isset($_GET['post_approval']) ? 'post_approval'
+    : (isset($_GET['message_attachment']) ? 'message_attachment' : (isset($_GET['attachment']) ? 'attachment' : 'id'));
+$documentId = filter_var($_GET[$downloadType] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 if (!$documentId) {
     http_response_code(404);
     exit('ไม่พบเอกสาร');
@@ -11,7 +14,19 @@ if (!$documentId) {
 
 try {
     $db = app_db();
-    $document = loan_document_access_row($db, $currentUser, (int) $documentId);
+    if ($downloadType === 'post_approval') {
+        $document = loan_post_approval_document_access_row($db, $currentUser, (int) $documentId);
+        $fileNamePrefix = 'post-approval-';
+    } elseif ($downloadType === 'message_attachment') {
+        $document = loan_conversation_attachment_access_row($db, $currentUser, (int) $documentId);
+        $fileNamePrefix = 'message-attachment-';
+    } elseif ($downloadType === 'attachment') {
+        $document = loan_review_attachment_access_row($db, $currentUser, (int) $documentId);
+        $fileNamePrefix = 'review-attachment-';
+    } else {
+        $document = loan_document_access_row($db, $currentUser, (int) $documentId);
+        $fileNamePrefix = 'loan-document-';
+    }
     if (!$document) {
         http_response_code(404);
         exit('ไม่พบเอกสารหรือคุณไม่มีสิทธิ์เข้าถึง');
@@ -23,7 +38,7 @@ try {
         exit('ไม่พบไฟล์เอกสาร');
     }
     $extension = strtolower((string) pathinfo($document['original_name'], PATHINFO_EXTENSION));
-    $fallbackName = 'loan-document-' . (int) $documentId . ($extension !== '' ? '.' . $extension : '');
+    $fallbackName = $fileNamePrefix . (int) $documentId . ($extension !== '' ? '.' . $extension : '');
     header('Content-Type: ' . $document['mime_type']);
     header('Content-Length: ' . filesize($filePath));
     header('Content-Disposition: attachment; filename="' . $fallbackName . '"; filename*=UTF-8\'\'' . rawurlencode($document['original_name']));

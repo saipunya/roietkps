@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/loan-status.php';
+
 function loan_document_types(): array
 {
     return [
@@ -66,6 +68,30 @@ function loan_document_format_size(int $bytes): string
     return number_format($bytes) . ' B';
 }
 
+function loan_document_ini_bytes(string $setting): int
+{
+    $value = trim((string) ini_get($setting));
+    if (!preg_match('/\A(\d+)\s*([KMG]?)\z/i', $value, $parts)) {
+        return 0;
+    }
+    $multipliers = ['' => 1, 'K' => 1024, 'M' => 1048576, 'G' => 1073741824];
+    return (int) min(PHP_INT_MAX, (int) $parts[1] * $multipliers[strtoupper($parts[2])]);
+}
+
+function loan_document_batch_limits(): array
+{
+    $requestLimit = loan_document_ini_bytes('post_max_size');
+    $fileLimit = loan_document_ini_bytes('upload_max_filesize');
+    $serverFileCount = (int) ini_get('max_file_uploads');
+    // Leave room for multipart headers and detect excess files before PHP silently truncates them.
+    $total = $requestLimit > 0 ? min(100 * 1048576, max(1, $requestLimit - 64 * 1024)) : 100 * 1048576;
+    return [
+        'count' => min(10, max(1, $serverFileCount - 1)),
+        'file' => min(20 * 1048576, $fileLimit > 0 ? $fileLimit : $total, $total),
+        'total' => $total,
+    ];
+}
+
 function loan_document_date(string $utcDate): string
 {
     try {
@@ -86,17 +112,6 @@ function loan_document_upload_error(int $code): string
         return 'กรุณาเลือกไฟล์เอกสาร';
     }
     return 'อัปโหลดไฟล์ไม่สำเร็จ กรุณาลองใหม่';
-}
-
-function loan_document_primary_officer(PDO $db, int $cooperativeId, ?int $assignedOfficerId): ?int
-{
-    if ($assignedOfficerId) {
-        return $assignedOfficerId;
-    }
-    $query = $db->prepare("SELECT officer_user_id FROM organization_officer_assignments WHERE cooperative_id = ? AND is_primary = 1 AND (ends_on IS NULL OR ends_on >= CURRENT_DATE()) ORDER BY starts_on DESC LIMIT 1");
-    $query->execute([$cooperativeId]);
-    $officerId = $query->fetchColumn();
-    return $officerId ? (int) $officerId : null;
 }
 
 function loan_document_admin_clear_state(PDO $db, int $applicationId): array
@@ -156,6 +171,102 @@ function loan_document_remove_stored_files(array $storedNames): array
         }
     }
     return ['removed' => $removed, 'failed' => $failed];
+}
+
+function loan_document_archive_days(): int
+{
+    $configured = getenv('LOAN_DOCUMENT_ARCHIVE_DAYS');
+    $days = is_string($configured) && ctype_digit($configured) ? (int) $configured : 180;
+    return min(3650, max(1, $days));
+}
+
+function loan_document_archive_schema_ready(PDO $db): bool
+{
+    static $ready;
+    if ($ready !== null) {
+        return $ready;
+    }
+    try {
+        $query = $db->query("SHOW COLUMNS FROM loan_documents LIKE 'archived_at'");
+        $ready = (bool) $query->fetchColumn();
+    } catch (Throwable $exception) {
+        $ready = false;
+    }
+    return $ready;
+}
+
+function loan_document_archive_superseded_versions(PDO $db, int $applicationId, int $actorId): int
+{
+    if (!loan_document_archive_schema_ready($db)) {
+        return 0;
+    }
+    $query = $db->prepare('SELECT d.id, d.original_name, d.file_hash FROM loan_documents d
+        JOIN loan_documents newer ON newer.replaces_document_id = d.id
+        WHERE d.loan_application_id = ? AND d.archived_at IS NULL
+        ORDER BY d.id FOR UPDATE');
+    $query->execute([$applicationId]);
+    $documents = $query->fetchAll();
+    if (!$documents) {
+        return 0;
+    }
+    $days = loan_document_archive_days();
+    $update = $db->prepare("UPDATE loan_documents
+        SET archived_at = UTC_TIMESTAMP(), purge_after = DATE_ADD(UTC_TIMESTAMP(), INTERVAL {$days} DAY)
+        WHERE id = ? AND archived_at IS NULL");
+    $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, new_values, ip_hash)
+        VALUES (?, 'loan_document.archive', 'loan_document', ?, ?, ?, ?)");
+    $archived = 0;
+    foreach ($documents as $document) {
+        $update->execute([(int) $document['id']]);
+        if ($update->rowCount() !== 1) {
+            continue;
+        }
+        $audit->execute([
+            $actorId,
+            (int) $document['id'],
+            json_encode(['file_hash' => $document['file_hash'], 'state' => 'superseded'], JSON_UNESCAPED_UNICODE),
+            json_encode(['state' => 'archived', 'purge_after_days' => $days], JSON_UNESCAPED_UNICODE),
+            hash('sha256', $_SERVER['REMOTE_ADDR'] ?? ''),
+        ]);
+        $archived++;
+    }
+    return $archived;
+}
+
+function loan_document_purge_archived_files(PDO $db, int $limit = 100): array
+{
+    if (!loan_document_archive_schema_ready($db)) {
+        return ['purged' => 0, 'failed' => 0];
+    }
+    $limit = min(500, max(1, $limit));
+    $query = $db->query("SELECT d.id, d.stored_name, d.file_hash FROM loan_documents d
+        JOIN loan_applications a ON a.id = d.loan_application_id
+        WHERE a.status = 'approved' AND d.archived_at IS NOT NULL AND d.purge_after <= UTC_TIMESTAMP()
+          AND d.purged_at IS NULL AND d.stored_name IS NOT NULL
+        ORDER BY d.purge_after, d.id LIMIT {$limit}");
+    $purged = 0;
+    $failed = 0;
+    $update = $db->prepare('UPDATE loan_documents SET stored_name = NULL, purged_at = UTC_TIMESTAMP() WHERE id = ? AND stored_name = ? AND purged_at IS NULL');
+    $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, new_values, ip_hash)
+        VALUES (NULL, 'loan_document.purge', 'loan_document', ?, ?, ?, NULL)");
+    foreach ($query->fetchAll() as $document) {
+        $result = loan_document_remove_stored_files([(string) $document['stored_name']]);
+        if ($result['failed'] > 0) {
+            $failed++;
+            continue;
+        }
+        $update->execute([(int) $document['id'], (string) $document['stored_name']]);
+        if ($update->rowCount() !== 1) {
+            continue;
+        }
+        $audit->execute([
+            (int) $document['id'],
+            json_encode(['file_hash' => $document['file_hash'], 'stored_file_removed' => true], JSON_UNESCAPED_UNICODE),
+            json_encode(['state' => 'purged'], JSON_UNESCAPED_UNICODE),
+        ]);
+        $purged++;
+    }
+    return ['purged' => $purged, 'failed' => $failed];
 }
 
 function loan_document_admin_clear(PDO $db, array $actor, int $applicationId, string $confirmation, string $reason): array
@@ -226,11 +337,14 @@ function loan_document_admin_clear(PDO $db, array $actor, int $applicationId, st
         $deleteDocuments = $db->prepare('DELETE FROM loan_documents WHERE loan_application_id = ?');
         $deleteDocuments->execute([$applicationId]);
 
+        $reviewFiles = $db->prepare("SELECT f.stored_name FROM loan_review_attachments f JOIN loan_reviews r ON r.id = f.loan_review_id WHERE r.loan_application_id = ? AND r.review_stage = 'promotion'");
+        $reviewFiles->execute([$applicationId]);
+        $storedNames = array_merge($storedNames, $reviewFiles->fetchAll(PDO::FETCH_COLUMN));
         $promotionReviews = $db->prepare("DELETE FROM loan_reviews WHERE loan_application_id = ? AND review_stage = 'promotion'");
         $promotionReviews->execute([$applicationId]);
         $promotionReviewCount = $promotionReviews->rowCount();
 
-        $db->prepare("UPDATE loan_applications SET status = 'draft', review_round = 1, submitted_at = NULL, promotion_reviewed_at = NULL, row_version = row_version + 1 WHERE id = ?")->execute([$applicationId]);
+        $db->prepare("UPDATE loan_applications SET status = 'draft', review_round = 1, submitted_at = NULL, promotion_reviewed_at = NULL, document_draft_message = NULL, row_version = row_version + 1 WHERE id = ?")->execute([$applicationId]);
         $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, new_values, ip_hash) VALUES (?, 'loan_documents.admin_clear', 'loan_application', ?, ?, ?, ?)");
         $audit->execute([
             (int) $actor['id'],
@@ -266,34 +380,8 @@ function loan_document_admin_clear(PDO $db, array $actor, int $applicationId, st
     return $result;
 }
 
-function loan_document_store(PDO $db, array $actor, int $applicationId, array $values, array $file): int
+function loan_document_prepare_upload(array $file): array
 {
-    if ($actor['role_code'] !== 'cooperative_user' || !account_can($actor, 'documents.upload')) {
-        throw new DomainException('คุณไม่มีสิทธิ์อัปโหลดเอกสารคำขอกู้');
-    }
-    $application = $db->prepare("SELECT a.id, a.application_no, a.cooperative_id, a.assigned_officer_id, a.status, c.name AS organization_name FROM loan_applications a JOIN cooperatives c ON c.id = a.cooperative_id WHERE a.id = ? AND a.cooperative_id = ? AND a.status IN ('draft', 'revision_requested')");
-    $application->execute([$applicationId, (int) $actor['cooperative_id']]);
-    $loan = $application->fetch();
-    if (!$loan) {
-        throw new DomainException('คำขอนี้ไม่อยู่ในขั้นตอนที่อัปโหลดเอกสารได้');
-    }
-
-    $replacementId = isset($values['replaces_document_id']) ? (int) $values['replaces_document_id'] : 0;
-    $documentType = trim((string) ($values['document_type'] ?? ''));
-    $title = trim((string) ($values['title'] ?? ''));
-    if ($replacementId > 0) {
-        $replacement = $db->prepare("SELECT d.id, d.document_type, d.title FROM loan_documents d WHERE d.id = ? AND d.loan_application_id = ? AND d.status = 'needs_revision' AND NOT EXISTS (SELECT 1 FROM loan_documents newer WHERE newer.replaces_document_id = d.id)");
-        $replacement->execute([$replacementId, $applicationId]);
-        $oldDocument = $replacement->fetch();
-        if (!$oldDocument) {
-            throw new DomainException('ไม่พบเอกสารฉบับที่ต้องการแก้ไข');
-        }
-        $documentType = $oldDocument['document_type'];
-        $title = $oldDocument['title'];
-    } elseif (!array_key_exists($documentType, loan_document_types()) || mb_strlen($title, 'UTF-8') < 3 || mb_strlen($title, 'UTF-8') > 200) {
-        throw new DomainException('กรุณาเลือกประเภทและระบุชื่อเอกสาร 3–200 ตัวอักษร');
-    }
-
     $uploadError = isset($file['error']) ? (int) $file['error'] : UPLOAD_ERR_NO_FILE;
     if ($uploadError !== UPLOAD_ERR_OK) {
         throw new DomainException(loan_document_upload_error($uploadError));
@@ -315,95 +403,415 @@ function loan_document_store(PDO $db, array $actor, int $applicationId, array $v
         throw new DomainException('ชนิดของไฟล์ไม่ตรงกับนามสกุลหรือไม่รองรับ');
     }
 
+    $hash = hash_file('sha256', $temporaryPath);
+    if (!is_string($hash) || strlen($hash) !== 64) {
+        throw new RuntimeException('ไม่สามารถตรวจสอบความสมบูรณ์ของไฟล์ได้');
+    }
+
+    return [
+        'temporary_path' => $temporaryPath,
+        'extension' => $extension,
+        'original_name' => $originalName,
+        'mime_type' => $mimeType,
+        'file_size' => $size,
+        'file_hash' => $hash,
+    ];
+}
+
+function loan_document_save_upload(array $upload): string
+{
     $storagePath = loan_document_storage_path();
     if (!is_dir($storagePath) && !mkdir($storagePath, 0750, true) && !is_dir($storagePath)) {
         throw new RuntimeException('ไม่สามารถเตรียมพื้นที่จัดเก็บเอกสารคำขอกู้ได้');
     }
-    $storedName = bin2hex(random_bytes(24)) . '.' . $extension;
+    $storedName = bin2hex(random_bytes(24)) . '.' . $upload['extension'];
     $destination = $storagePath . DIRECTORY_SEPARATOR . $storedName;
-    if (!move_uploaded_file($temporaryPath, $destination)) {
+    if (!move_uploaded_file($upload['temporary_path'], $destination)) {
         throw new RuntimeException('ไม่สามารถบันทึกไฟล์บนเซิร์ฟเวอร์ได้');
     }
     @chmod($destination, 0640);
+    return $storedName;
+}
 
-    try {
-        $db->beginTransaction();
-        $hash = hash_file('sha256', $destination);
-        if (!is_string($hash) || strlen($hash) !== 64) {
-            throw new RuntimeException('ไม่สามารถตรวจสอบความสมบูรณ์ของไฟล์ได้');
+function loan_document_prepare_uploads(array $files, ?string $deniedMessage = null): array
+{
+    $errors = $files['error'] ?? [];
+    if (!is_array($errors)) {
+        throw new DomainException('กรุณาเลือกไฟล์แนบอีกครั้ง');
+    }
+    $uploads = [];
+    foreach ($errors as $index => $error) {
+        if (!is_int($error)) {
+            throw new DomainException('กรุณาเลือกไฟล์แนบอีกครั้ง');
         }
-        $query = $db->prepare("INSERT INTO loan_documents (loan_application_id, replaces_document_id, document_type, title, original_name, stored_name, mime_type, file_size, file_hash, status, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'uploaded', ?)");
-        $query->execute([$applicationId, $replacementId ?: null, $documentType, $title, $originalName, $storedName, $mimeType, $size, $hash, (int) $actor['id']]);
-        $documentId = (int) $db->lastInsertId();
-        $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, new_values, ip_hash) VALUES (?, 'loan_document.upload', 'loan_document', ?, ?, ?)");
-        $audit->execute([(int) $actor['id'], $documentId, json_encode(['loan_application_id' => $applicationId, 'document_type' => $documentType, 'title' => $title, 'replaces_document_id' => $replacementId ?: null, 'file_size' => $size], JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
+        if ($error === UPLOAD_ERR_NO_FILE) {
+            continue;
+        }
+        if ($deniedMessage !== null) {
+            throw new DomainException($deniedMessage);
+        }
+        $uploads[] = loan_document_prepare_upload([
+            'error' => $error,
+            'tmp_name' => $files['tmp_name'][$index] ?? '',
+            'size' => $files['size'][$index] ?? 0,
+            'name' => $files['name'][$index] ?? '',
+        ]);
+    }
+    return $uploads;
+}
 
-        $officerId = loan_document_primary_officer($db, (int) $loan['cooperative_id'], $loan['assigned_officer_id'] ? (int) $loan['assigned_officer_id'] : null);
-        if ($officerId) {
-            $notificationTitle = $replacementId > 0 ? 'มีเอกสารคำขอกู้ฉบับแก้ไข' : 'มีเอกสารคำขอกู้ใหม่';
-            $notificationMessage = $loan['organization_name'] . ($replacementId > 0 ? ' อัปโหลดฉบับแก้ไขของ ' : ' อัปโหลด ') . $title;
-            notification_create($db, $officerId, 'loan_document', $notificationTitle, $notificationMessage, 'warning', 'dashboard.php?page=loan-documents&loan=' . $applicationId, 'loan-document:' . $documentId . ':uploaded', 'loan_document', $documentId);
-        }
-        $db->commit();
-        return $documentId;
-    } catch (Throwable $exception) {
-        if ($db->inTransaction()) {
-            $db->rollBack();
-        }
-        @unlink($destination);
-        throw $exception;
+function loan_document_prepare_batch(array $files, int $expectedCount, bool $allowEmpty = false): array
+{
+    $limits = loan_document_batch_limits();
+    $errors = $files['error'] ?? [];
+    if (is_array($errors) && count($errors) > $limits['count']) {
+        throw new DomainException('เลือกได้ไม่เกิน ' . $limits['count'] . ' ไฟล์ต่อครั้ง กรุณาแบ่งอัปโหลดเป็นชุด');
+    }
+    // An individual replacement (and the previous upload form) sends a scalar file.
+    $uploads = $allowEmpty && $errors === UPLOAD_ERR_NO_FILE
+        ? []
+        : (is_array($errors) ? loan_document_prepare_uploads($files) : [loan_document_prepare_upload($files)]);
+    if ($expectedCount > 0 && count($uploads) !== $expectedCount) {
+        throw new DomainException('เซิร์ฟเวอร์ได้รับไฟล์ไม่ครบ กรุณาแบ่งอัปโหลดเป็นชุดเล็กลง');
+    }
+    if (!$uploads && !$allowEmpty) {
+        throw new DomainException('กรุณาเลือกไฟล์เอกสารอย่างน้อย 1 ไฟล์');
+    }
+    if (array_sum(array_column($uploads, 'file_size')) > $limits['total']) {
+        throw new DomainException('ขนาดไฟล์รวมเกินกำหนด กรุณาแบ่งอัปโหลดเป็นชุดเล็กลง');
+    }
+    return $uploads;
+}
+
+function loan_review_attachment_uploads(array $files): array
+{
+    return loan_document_prepare_uploads($files);
+}
+
+function loan_review_save_attachments(PDO $db, int $reviewId, array $uploads, array &$storedNames): void
+{
+    if (!$uploads) {
+        return;
+    }
+    $query = $db->prepare('INSERT INTO loan_review_attachments (loan_review_id, original_name, stored_name, mime_type, file_size, file_hash) VALUES (?, ?, ?, ?, ?, ?)');
+    foreach ($uploads as $upload) {
+        $storedName = loan_document_save_upload($upload);
+        $storedNames[] = $storedName;
+        $query->execute([$reviewId, $upload['original_name'], $storedName, $upload['mime_type'], $upload['file_size'], $upload['file_hash']]);
     }
 }
 
-function loan_document_review(PDO $db, array $actor, int $applicationId, int $documentId, string $decision, string $note): void
+function loan_review_attachments_by_application(PDO $db, int $applicationId): array
 {
-    if ($actor['role_code'] !== 'promotion_officer' || !account_can($actor, 'documents.review')) {
-        throw new DomainException('คุณไม่มีสิทธิ์ตรวจเอกสารรายการนี้');
+    $query = $db->prepare('SELECT f.id, f.loan_review_id, f.original_name, f.file_size
+        FROM loan_review_attachments f JOIN loan_reviews r ON r.id = f.loan_review_id
+        WHERE r.loan_application_id = ? ORDER BY f.id');
+    $query->execute([$applicationId]);
+    $byReview = [];
+    foreach ($query as $attachment) {
+        $byReview[(int) $attachment['loan_review_id']][] = $attachment;
     }
-    if (!in_array($decision, ['verified', 'needs_revision'], true) || mb_strlen($note, 'UTF-8') > 1000 || ($decision === 'needs_revision' && mb_strlen($note, 'UTF-8') < 3)) {
-        throw new DomainException('กรุณาระบุผลการตรวจและเหตุผลที่ต้องแก้ไข');
+    return $byReview;
+}
+
+/**
+ * Removes a file that is still being prepared by the cooperative.  Once the
+ * application has left draft, documents are evidence of that review round and
+ * must be retained (revisions are uploaded as a new version instead).
+ */
+function loan_document_delete_draft(PDO $db, array $actor, int $applicationId, int $documentId): array
+{
+    if ($actor['role_code'] !== 'cooperative_user' || !account_can($actor, 'documents.upload')) {
+        throw new DomainException('คุณไม่มีสิทธิ์ลบเอกสารคำขอกู้');
     }
 
+    $storedName = null;
     $db->beginTransaction();
     try {
-        $query = $db->prepare("SELECT d.id, d.title, d.status AS document_status, a.status AS application_status, a.review_round, a.cooperative_id, a.assigned_officer_id FROM loan_documents d JOIN loan_applications a ON a.id = d.loan_application_id WHERE d.id = ? AND d.loan_application_id = ? AND d.status = 'uploaded' AND a.assigned_officer_id = ? AND a.status IN ('submitted', 'promotion_review') AND NOT EXISTS (SELECT 1 FROM loan_documents newer WHERE newer.replaces_document_id = d.id) FOR UPDATE");
-        $query->execute([$documentId, $applicationId, (int) $actor['id']]);
+        $query = $db->prepare("SELECT d.id, d.original_name, d.stored_name, d.document_type, d.title, d.file_hash, d.file_size, a.status, a.review_round
+            FROM loan_documents d
+            JOIN loan_applications a ON a.id = d.loan_application_id
+            WHERE d.id = ? AND d.loan_application_id = ? AND a.cooperative_id = ?
+              AND (a.status = 'draft' OR (a.status = 'revision_requested' AND d.is_draft = 1))
+              AND d.status = 'uploaded'
+              AND NOT EXISTS (SELECT 1 FROM loan_documents newer WHERE newer.replaces_document_id = d.id)
+              AND NOT EXISTS (SELECT 1 FROM loan_document_reviews r WHERE r.loan_document_id = d.id)
+            FOR UPDATE");
+        $query->execute([$documentId, $applicationId, (int) $actor['cooperative_id']]);
         $document = $query->fetch();
         if (!$document) {
-            throw new DomainException('เอกสารนี้ถูกตรวจแล้วหรือไม่อยู่ในความรับผิดชอบของคุณ');
+            throw new DomainException('ลบได้เฉพาะเอกสารฉบับร่างที่ยังไม่ได้ส่งให้เจ้าหน้าที่ตรวจสอบ');
         }
-        $query = $db->prepare('UPDATE loan_documents SET status = ?, reviewed_by = ?, review_note = ?, reviewed_at = UTC_TIMESTAMP() WHERE id = ?');
-        $query->execute([$decision, (int) $actor['id'], $note !== '' ? $note : null, $documentId]);
-        $query = $db->prepare('INSERT INTO loan_document_reviews (loan_document_id, decision, from_status, to_status, note, reviewed_by) VALUES (?, ?, ?, ?, ?, ?)');
-        $query->execute([$documentId, $decision, $document['document_status'], $decision, $note !== '' ? $note : null, (int) $actor['id']]);
-        $audit = $db->prepare('INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, new_values, ip_hash) VALUES (?, ?, \'loan_document\', ?, ?, ?, ?)');
-        $audit->execute([(int) $actor['id'], 'loan_document.' . $decision, $documentId, json_encode(['status' => $document['document_status']]), json_encode(['status' => $decision, 'note' => $note], JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
+        loan_require_cooperative_revision_turn($db, $applicationId, $document);
 
-        if ($decision === 'needs_revision') {
-            $db->prepare("UPDATE loan_applications SET status = 'revision_requested', promotion_reviewed_at = UTC_TIMESTAMP(), row_version = row_version + 1 WHERE id = ?")->execute([$applicationId]);
-            $comment = 'เอกสาร "' . $document['title'] . '": ' . $note;
-            $db->prepare("INSERT INTO loan_reviews (loan_application_id, review_round, review_stage, decision, from_status, to_status, comment, reviewed_by) VALUES (?, ?, 'promotion', 'request_revision', ?, 'revision_requested', ?, ?)")->execute([$applicationId, $document['review_round'], $document['application_status'], $comment, (int) $actor['id']]);
-            tracking_promotion_reviewed($db, $applicationId, (int) $actor['id'], 'request_revision', $comment, 'dashboard.php?page=loan-documents&loan=' . $applicationId);
-        } else {
-            $cooperativeUsers = notification_active_user_ids($db, 'cooperative_user', null, (int) $document['cooperative_id']);
-            notification_create_for_users($db, $cooperativeUsers, 'loan_document', 'เอกสารผ่านการตรวจแล้ว', $document['title'] . ' ผ่านการตรวจจากเจ้าหน้าที่ส่งเสริม', 'normal', 'dashboard.php?page=loan-documents&loan=' . $applicationId, 'loan-document:' . $documentId . ':verified', 'loan_document', $documentId);
+        $delete = $db->prepare('DELETE FROM loan_documents WHERE id = ?');
+        $delete->execute([$documentId]);
+        if ($delete->rowCount() !== 1) {
+            throw new RuntimeException('ไม่สามารถลบเอกสารได้ กรุณาลองใหม่');
         }
+
+        $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, old_values, new_values, ip_hash)
+            VALUES (?, 'loan_document.delete_draft', 'loan_document', ?, ?, ?, ?)");
+        $audit->execute([
+            (int) $actor['id'],
+            $documentId,
+            json_encode([
+                'loan_application_id' => $applicationId,
+                'document_type' => $document['document_type'],
+                'title' => $document['title'],
+                'original_name' => $document['original_name'],
+                'file_hash' => $document['file_hash'],
+                'file_size' => (int) $document['file_size'],
+            ], JSON_UNESCAPED_UNICODE),
+            json_encode(['state' => 'deleted_before_submission'], JSON_UNESCAPED_UNICODE),
+            hash('sha256', $_SERVER['REMOTE_ADDR'] ?? ''),
+        ]);
+        $storedName = (string) $document['stored_name'];
+        $db->prepare('UPDATE loan_applications SET row_version = row_version + 1 WHERE id = ?')->execute([$applicationId]);
         $db->commit();
     } catch (Throwable $exception) {
         if ($db->inTransaction()) {
             $db->rollBack();
         }
         throw $exception;
+    }
+
+    $cleanup = loan_document_remove_stored_files([$storedName]);
+    if ($cleanup['failed'] > 0) {
+        error_log('Loan document file cleanup failed after draft deletion: ' . $documentId);
+    }
+    return $cleanup;
+}
+
+// Called within the upload transaction, which owns rollback and file cleanup.
+function loan_documents_store(PDO $db, array $actor, int $applicationId, array $values, array $uploads, array &$storedNames): void
+{
+    $replacementId = isset($values['replaces_document_id']) ? (int) $values['replaces_document_id'] : 0;
+    $documentType = trim((string) ($values['document_type'] ?? ''));
+    $title = trim((string) ($values['title'] ?? ''));
+    if ($replacementId <= 0 && !array_key_exists($documentType, loan_document_types())) {
+        throw new DomainException('กรุณาเลือกประเภทเอกสาร');
+    }
+    if ($title !== '' && (!mb_check_encoding($title, 'UTF-8') || mb_strlen($title, 'UTF-8') < 3 || mb_strlen($title, 'UTF-8') > 200)) {
+        throw new DomainException('ชื่อเอกสารต้องมีความยาว 3–200 ตัวอักษร');
+    }
+    $application = $db->prepare("SELECT status FROM loan_applications WHERE id = ? AND cooperative_id = ? AND status IN ('draft', 'revision_requested') FOR UPDATE");
+    $application->execute([$applicationId, (int) $actor['cooperative_id']]);
+    $status = $application->fetchColumn();
+    if (!$status) {
+        throw new DomainException('คำขอนี้ไม่อยู่ในขั้นตอนที่อัปโหลดเอกสารได้');
+    }
+    if ($replacementId > 0) {
+        if (count($uploads) !== 1) {
+            throw new DomainException('กรุณาเลือกไฟล์ฉบับแก้ไขเพียง 1 ไฟล์สำหรับเอกสารเดิม');
+        }
+        $replacement = $db->prepare("SELECT d.document_type, d.title FROM loan_documents d WHERE d.id = ? AND d.loan_application_id = ? AND d.is_draft = 0 AND (? = 'revision_requested' OR d.status = 'needs_revision') AND NOT EXISTS (SELECT 1 FROM loan_documents newer WHERE newer.replaces_document_id = d.id)");
+        $replacement->execute([$replacementId, $applicationId, $status]);
+        $oldDocument = $replacement->fetch();
+        if (!$oldDocument) {
+            throw new DomainException('ไม่พบเอกสารฉบับปัจจุบันที่ต้องการแก้ไข');
+        }
+        $documentType = $oldDocument['document_type'];
+        $title = $oldDocument['title'];
+    }
+    $query = $db->prepare("INSERT INTO loan_documents (loan_application_id, replaces_document_id, document_type, title, original_name, stored_name, mime_type, file_size, file_hash, status, uploaded_by, is_draft) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'uploaded', ?, 1)");
+    $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, new_values, ip_hash) VALUES (?, 'loan_document.upload', 'loan_document', ?, ?, ?)");
+    foreach ($uploads as $upload) {
+        $documentTitle = $title !== '' ? $title : mb_substr($upload['original_name'], 0, 200, 'UTF-8');
+        $storedName = loan_document_save_upload($upload);
+        $storedNames[] = $storedName;
+        $query->execute([$applicationId, $replacementId ?: null, $documentType, $documentTitle, $upload['original_name'], $storedName, $upload['mime_type'], $upload['file_size'], $upload['file_hash'], (int) $actor['id']]);
+        $documentId = (int) $db->lastInsertId();
+        $audit->execute([(int) $actor['id'], $documentId, json_encode(['loan_application_id' => $applicationId, 'document_type' => $documentType, 'title' => $documentTitle, 'replaces_document_id' => $replacementId ?: null, 'file_size' => $upload['file_size']], JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
+    }
+}
+
+function loan_document_can_review_set(array $actor, array $loan): bool
+{
+    return $actor['role_code'] === 'promotion_officer' && account_can($actor, 'documents.review')
+        && (int) $loan['assigned_officer_id'] === (int) $actor['id']
+        && (int) $loan['organization_province_id'] === (int) $actor['province_id']
+        && in_array($loan['status'], ['submitted', 'promotion_review'], true);
+}
+
+function loan_document_set_review_for_round(PDO $db, int $applicationId, int $round): ?array
+{
+    $query = $db->prepare("SELECT r.*, u.full_name AS reviewer_name FROM loan_reviews r JOIN users u ON u.id = r.reviewed_by
+        WHERE r.loan_application_id = ? AND r.review_round = ? AND r.review_stage = 'promotion'
+        AND r.decision = 'comment' AND r.to_status = 'promotion_review' ORDER BY r.id DESC LIMIT 1");
+    $query->execute([$applicationId, $round]);
+    return $query->fetch() ?: null;
+}
+
+// The caller owns the transaction and cleans up attachment files on rollback.
+function loan_document_review_set(PDO $db, array $actor, int $applicationId, string $version, string $decision, string $note, array $files, array &$storedAttachments): void
+{
+    if (!in_array($decision, ['verified', 'request_revision'], true)
+        || !mb_check_encoding($note, 'UTF-8') || mb_strlen($note, 'UTF-8') > 2000) {
+        throw new DomainException('กรุณาระบุผลการตรวจและเขียนความเห็นไม่เกิน 2,000 ตัวอักษร');
+    }
+
+    $actorId = (int) $actor['id'];
+    $loan = loan_promotion_application_for_update($db, $applicationId, $actorId);
+    if (!$loan || !loan_document_can_review_set($actor, $loan)) {
+        throw new DomainException('คำขอนี้ไม่อยู่ในขั้นตอนที่คุณตรวจชุดเอกสารได้');
+    }
+    if ($version !== (string) $loan['row_version']) {
+        throw new DomainException('คำขอมีข้อมูลใหม่ กรุณาตรวจเอกสารอีกครั้งก่อนบันทึกผล');
+    }
+    $query = $db->prepare("SELECT id FROM loan_documents d WHERE d.loan_application_id = ? AND d.is_draft = 0
+        AND NOT EXISTS (SELECT 1 FROM loan_documents newer WHERE newer.replaces_document_id = d.id AND newer.is_draft = 0)
+        ORDER BY d.id FOR UPDATE");
+    $query->execute([$applicationId]);
+    $documentIds = $query->fetchAll(PDO::FETCH_COLUMN);
+    if (!$documentIds) {
+        throw new DomainException('คำขอนี้ยังไม่มีชุดเอกสารให้ตรวจ');
+    }
+
+    $round = (int) $loan['review_round'];
+    if (loan_document_set_review_for_round($db, $applicationId, $round)) {
+        throw new DomainException('บันทึกผลตรวจชุดเอกสารรอบนี้แล้ว กรุณาเปิดข้อมูลคำขอเพื่อดำเนินการต่อ');
+    }
+    $uploads = loan_review_attachment_uploads($files);
+    if ($note === '' && !$uploads) {
+        throw new DomainException('กรุณาเขียนความเห็นหรือแนบไฟล์ประกอบผลการตรวจ');
+    }
+    $note = $note !== '' ? $note : 'รายละเอียดอยู่ในไฟล์แนบ';
+    $verified = $decision === 'verified';
+    $toStatus = $verified ? 'promotion_review' : 'revision_requested';
+    if ($verified) {
+        $placeholders = implode(',', array_fill(0, count($documentIds), '?'));
+        $query = $db->prepare("UPDATE loan_documents SET status = 'verified', review_note = NULL, reviewed_by = ?, reviewed_at = UTC_TIMESTAMP()
+            WHERE id IN ({$placeholders}) AND status <> 'verified'");
+        $query->execute(array_merge([$actorId], $documentIds));
+    }
+    $db->prepare('UPDATE loan_applications SET status = ?, promotion_reviewed_at = UTC_TIMESTAMP(), row_version = row_version + 1 WHERE id = ?')
+        ->execute([$toStatus, $applicationId]);
+    $review = $db->prepare("INSERT INTO loan_reviews
+        (loan_application_id, review_round, review_stage, decision, from_status, to_status, comment, reviewed_by)
+        VALUES (?, ?, 'promotion', ?, ?, ?, ?, ?)");
+    $review->execute([$applicationId, $round, $verified ? 'comment' : 'request_revision', $loan['status'], $toStatus, $note, $actorId]);
+    $reviewId = (int) $db->lastInsertId();
+    loan_review_save_attachments($db, $reviewId, $uploads, $storedAttachments);
+    $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, new_values, ip_hash)
+        VALUES (?, 'loan_document_set.review', 'loan_application', ?, ?, ?)");
+    $audit->execute([$actorId, $applicationId, json_encode(['review_id' => $reviewId, 'result' => $decision, 'document_ids' => $documentIds]), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
+
+    $url = 'dashboard.php?page=loan-documents&loan=' . $applicationId;
+    if ($verified) {
+        $users = notification_active_user_ids($db, 'cooperative_user', null, (int) $loan['cooperative_id']);
+        notification_create_for_users($db, $users, 'loan', 'ชุดเอกสารผ่านการตรวจแล้ว', mb_substr($note, 0, 180, 'UTF-8'),
+            'normal', $url, 'loan:' . $applicationId . ':document-set:' . $round, 'loan_application', $applicationId);
+    } else {
+        tracking_promotion_reviewed($db, $applicationId, $actorId, 'request_revision', $note, $url);
     }
 }
 
 function loan_document_access_row(PDO $db, array $user, int $documentId): ?array
 {
-    $query = $db->prepare('SELECT d.*, a.cooperative_id, a.assigned_officer_id, c.province_id FROM loan_documents d JOIN loan_applications a ON a.id = d.loan_application_id JOIN cooperatives c ON c.id = a.cooperative_id WHERE d.id = ?');
+    $archiveScope = loan_document_archive_schema_ready($db) ? ' AND d.archived_at IS NULL' : '';
+    $draftScope = loan_document_can_view_drafts($user) ? '' : ' AND d.is_draft = 0';
+    $query = $db->prepare('SELECT d.*, a.cooperative_id, a.assigned_officer_id, c.province_id FROM loan_documents d JOIN loan_applications a ON a.id = d.loan_application_id JOIN cooperatives c ON c.id = a.cooperative_id WHERE d.id = ?' . $archiveScope . $draftScope);
     $query->execute([$documentId]);
     $document = $query->fetch();
-    if (!$document || !account_can($user, 'loans.view')) {
+    return $document && loan_document_user_can_access($db, $user, $document) ? $document : null;
+}
+
+function loan_document_can_view_drafts(array $user): bool
+{
+    return $user['role_code'] === 'cooperative_user' || account_is_admin($user);
+}
+
+function loan_post_approval_document_kinds(): array
+{
+    return ['contract' => 'สัญญาเงินกู้', 'supporting' => 'เอกสารประกอบหลังอนุมัติ'];
+}
+
+function loan_post_approval_can_upload(array $actor, array $loan): bool
+{
+    return role_is_provincial($actor['role_code']) && account_can($actor, 'contracts.create') && account_can($actor, 'contracts.view')
+        && $actor['province_id'] !== null && (int) $actor['province_id'] === (int) $loan['province_id']
+        && $loan['status'] === 'approved';
+}
+
+// The caller commits the batch and removes newly stored files if the transaction rolls back.
+function loan_post_approval_store(PDO $db, array $actor, int $applicationId, string $kind, array $files, array &$storedFiles): int
+{
+    if (!isset(loan_post_approval_document_kinds()[$kind])) {
+        throw new DomainException('กรุณาเลือกประเภทเอกสารหลังอนุมัติ');
+    }
+    $query = $db->prepare('SELECT a.*, c.province_id FROM loan_applications a JOIN cooperatives c ON c.id = a.cooperative_id WHERE a.id = ? FOR UPDATE');
+    $query->execute([$applicationId]);
+    $loan = $query->fetch();
+    if (!$loan || !loan_post_approval_can_upload($actor, $loan)) {
+        throw new DomainException('เฉพาะเจ้าหน้าที่จังหวัดที่รับผิดชอบเท่านั้นที่แนบไฟล์ได้หลังคำขอได้รับอนุมัติ');
+    }
+    if ($loan['admin_unlocked_at'] !== null) {
+        throw new DomainException('คำขอนี้กำลังแก้ไขข้อมูลที่อนุมัติ กรุณาแนบไฟล์หลังระบบล็อกข้อมูลอีกครั้ง');
+    }
+    $uploads = loan_document_prepare_batch($files, 0);
+    $existing = $db->prepare('SELECT id FROM loan_post_approval_documents WHERE loan_application_id = ? AND document_kind = ? AND file_hash = ?');
+    $insert = $db->prepare('INSERT INTO loan_post_approval_documents
+        (loan_application_id, document_kind, original_name, stored_name, mime_type, file_size, file_hash, uploaded_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    $audit = $db->prepare("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, new_values, ip_hash)
+        VALUES (?, 'loan.post_approval_document.upload', 'loan_post_approval_document', ?, ?, ?)");
+    $actorId = (int) $actor['id'];
+    foreach ($uploads as $upload) {
+        $existing->execute([$applicationId, $kind, $upload['file_hash']]);
+        if ($existing->fetchColumn()) {
+            continue;
+        }
+        $storedName = loan_document_save_upload($upload);
+        $storedFiles[] = $storedName;
+        $insert->execute([$applicationId, $kind, $upload['original_name'], $storedName, $upload['mime_type'],
+            $upload['file_size'], $upload['file_hash'], $actorId]);
+        $documentId = (int) $db->lastInsertId();
+        $audit->execute([$actorId, $documentId, json_encode(['loan_application_id' => $applicationId, 'document_kind' => $kind,
+                'file_hash' => $upload['file_hash']], JSON_UNESCAPED_UNICODE), hash('sha256', $_SERVER['REMOTE_ADDR'] ?? '')]);
+    }
+    if ($kind === 'contract' && $storedFiles) {
+        $query = $db->prepare('SELECT id FROM loan_contracts WHERE loan_application_id = ? FOR UPDATE');
+        $query->execute([$applicationId]);
+        if (!$query->fetchColumn()) {
+            $insertContract = $db->prepare("INSERT INTO loan_contracts
+                (loan_application_id, cooperative_id, principal_amount, interest_rate, term_months, maturity_date, outstanding_principal, status, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'awaiting_preparation', ?)");
+            $insertContract->execute([$applicationId, $loan['cooperative_id'], $loan['approved_amount'], $loan['approved_interest_rate'],
+                $loan['term_months'], $loan['repayment_due_date'], $loan['approved_amount'], $actorId]);
+        }
+    }
+    return count($storedFiles);
+}
+
+function loan_post_approval_document_access_row(PDO $db, array $user, int $documentId): ?array
+{
+    if (!account_can($user, 'contracts.view')) {
         return null;
+    }
+    $query = $db->prepare("SELECT d.*, a.cooperative_id, a.assigned_officer_id, c.province_id
+        FROM loan_post_approval_documents d JOIN loan_applications a ON a.id = d.loan_application_id
+        JOIN cooperatives c ON c.id = a.cooperative_id WHERE d.id = ? AND a.status = 'approved'");
+    $query->execute([$documentId]);
+    $document = $query->fetch();
+    return $document && loan_document_user_can_access($db, $user, $document) ? $document : null;
+}
+
+function loan_review_attachment_access_row(PDO $db, array $user, int $attachmentId): ?array
+{
+    $query = $db->prepare("SELECT f.*, a.cooperative_id, a.assigned_officer_id, c.province_id
+        FROM loan_review_attachments f JOIN loan_reviews r ON r.id = f.loan_review_id
+        JOIN loan_applications a ON a.id = r.loan_application_id JOIN cooperatives c ON c.id = a.cooperative_id
+        WHERE f.id = ?");
+    $query->execute([$attachmentId]);
+    $attachment = $query->fetch();
+    return $attachment && loan_document_user_can_access($db, $user, $attachment) ? $attachment : null;
+}
+
+function loan_document_user_can_access(PDO $db, array $user, array $document): bool
+{
+    if (!account_can($user, 'loans.view')) {
+        return false;
     }
     $allowed = ($user['role_code'] === 'cooperative_user' && $user['cooperative_id'] !== null && (int) $user['cooperative_id'] === (int) $document['cooperative_id'])
         || (role_is_provincial($user['role_code']) && $user['province_id'] !== null && $document['province_id'] !== null && (int) $user['province_id'] === (int) $document['province_id'])
@@ -417,5 +825,5 @@ function loan_document_access_row(PDO $db, array $user, int $documentId): ?array
             $allowed = (bool) $assignment->fetchColumn();
         }
     }
-    return $allowed ? $document : null;
+    return $allowed;
 }
