@@ -16,7 +16,7 @@ if (!in_array($requestedPage, $publicPages, true)) {
 
 $pages = [
     'dashboard' => ['title' => 'ภาพรวมการบริหารกองทุนพัฒนาสหกรณ์', 'description' => 'ข้อมูลสำคัญและข่าวสารของกองทุนพัฒนาสหกรณ์', 'icon' => 'dashboard', 'public' => true],
-    'documents' => ['title' => 'คู่มือและเอกสาร', 'description' => 'ค้นหาและดาวน์โหลดเอกสารเผยแพร่ของระบบ', 'icon' => 'folder', 'public' => true],
+    'documents' => ['title' => 'คู่มือและเอกสาร', 'description' => 'ดูวิดีโอคู่มือ ค้นหาและดาวน์โหลดเอกสารเผยแพร่ของระบบ', 'icon' => 'folder', 'public' => true],
 ];
 $page = $requestedPage;
 $pageTitle = $pages[$page]['title'];

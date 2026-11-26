@@ -703,6 +703,12 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
 
 /* Public manuals and downloadable documents. */
 .document-upload-panel, .document-library, .dashboard-documents { margin-bottom: 22px; overflow: hidden; }
+.document-guide { margin-bottom: 22px; }
+.document-guide-videos { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; padding: 0 24px 24px; }
+.document-guide-video { flex: 1 1 24rem; min-width: 0; max-width: 560px; margin: 0; }
+.document-guide-video iframe { display: block; width: 100%; height: auto; min-height: 200px; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: #111; }
+.document-guide-video figcaption { margin-top: 8px; font-size: 15px; }
+.document-guide-video a { text-decoration: underline; text-underline-offset: 3px; }
 .document-heading-icon { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 auto; border-radius: 12px; }
 .document-heading-icon .app-icon { font-size: 22px; }
 .document-upload-form { padding: 2px 24px 24px; }
@@ -757,6 +763,7 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
 .compact-document-empty { padding-top: 34px; padding-bottom: 38px; }
 
 @media (max-width: 767.98px) {
+  .document-guide-videos { padding-right: 20px; padding-left: 20px; }
   .document-upload-grid { grid-template-columns: 1fr; }
   .document-description-field, .document-file-field { grid-column: auto; }
   .document-toolbar { align-items: stretch; flex-direction: column; padding-right: 20px; padding-left: 20px; }
@@ -771,6 +778,7 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -.5px; line-height: 1.5;
 }
 
 @media (max-width: 575.98px) {
+  .document-guide-videos { padding: 0 16px 20px; }
   .document-upload-form { padding: 0 16px 20px; }
   .document-toolbar, .document-list, .dashboard-document-list { padding-right: 16px; padding-left: 16px; }
   .document-row { grid-template-columns: 1fr; }

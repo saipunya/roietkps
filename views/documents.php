@@ -1,5 +1,36 @@
 <?php $documentCategories = public_document_categories(); ?>
 
+<?php if ($publicDocumentsReadOnly): ?>
+<?php
+$documentGuideVideos = [
+    'PAkv1hVAhJw' => 'การใช้งานระบบ Roietkps สำหรับเจ้าหน้าที่ส่งเสริมสหกรณ์',
+    'h7MzIgBIzL0' => 'ข้อมูลการใช้งานระบบ RoietKps สำหรับสหกรณ์และกลุ่มเกษตรกร',
+];
+?>
+<section class="surface document-guide" aria-labelledby="documentGuideTitle">
+  <div class="surface-heading">
+    <h2 id="documentGuideTitle">วิดีโอคู่มือการใช้งานระบบ</h2>
+    <span class="document-heading-icon tone-green" aria-hidden="true"><i class="bi bi-play-btn app-icon"></i></span>
+  </div>
+  <div class="document-guide-videos">
+    <?php foreach ($documentGuideVideos as $videoId => $videoTitle): ?>
+    <figure class="document-guide-video">
+      <iframe
+        src="https://www.youtube.com/embed/<?= e($videoId) ?>"
+        title="<?= e($videoTitle) ?>"
+        width="560" height="315" loading="lazy"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        referrerpolicy="strict-origin-when-cross-origin" allowfullscreen
+      ></iframe>
+      <figcaption>
+        <a href="https://www.youtube.com/watch?v=<?= e($videoId) ?>" aria-label="<?= e($videoTitle) ?> (เปิดบน YouTube)"><?= e($videoTitle) ?></a>
+      </figcaption>
+    </figure>
+    <?php endforeach; ?>
+  </div>
+</section>
+<?php endif; ?>
+
 <?php if ($documentsNotice): ?><div class="alert alert-success" role="status"><?= e($documentsNotice) ?></div><?php endif; ?>
 <?php if ($documentsError): ?><div class="alert alert-danger" role="alert"><?= e($documentsError) ?></div><?php endif; ?>
 
